@@ -2146,7 +2146,7 @@ dwarf2_evaluate_loc_desc_full (struct type *type, struct frame_info *frame,
     invalid_synthetic_pointer ();
 
   if (size == 0)
-    return allocate_optimized_out_value ("dwarf2_evaluate_loc_desc_full", type);
+    return allocate_optimized_out_value (type);
 
   baton.frame = frame;
   baton.per_cu = per_cu;
@@ -2180,7 +2180,7 @@ dwarf2_evaluate_loc_desc_full (struct type *type, struct frame_info *frame,
 	  if (entry_values_debug)
 	    exception_print (gdb_stdout, ex);
 	  do_cleanups (old_chain);
-	  return allocate_optimized_out_value ("NO_ENTRY_VALUE_ERROR", type);
+	  return allocate_optimized_out_value (type);
 	}
       else
 	throw_exception (ex);
@@ -2307,7 +2307,7 @@ dwarf2_evaluate_loc_desc_full (struct type *type, struct frame_info *frame,
 
 	case DWARF_VALUE_OPTIMIZED_OUT:
 	  do_cleanups (value_chain);
-	  retval = allocate_optimized_out_value ("DW_V_O_O",type);
+	  retval = allocate_optimized_out_value (type);
 	  break;
 
 	  /* DWARF_VALUE_IMPLICIT_POINTER was converted to a pieced
@@ -4005,11 +4005,11 @@ loclist_read_variable_at_entry (struct symbol *symbol, struct frame_info *frame)
   CORE_ADDR pc;
 
   if (frame == NULL || !get_frame_func_if_available (frame, &pc))
-    return allocate_optimized_out_value ("LLRVAE 1", SYMBOL_TYPE (symbol));
+    return allocate_optimized_out_value (SYMBOL_TYPE (symbol));
 
   data = dwarf2_find_location_expression (dlbaton, &size, pc);
   if (data == NULL)
-    return allocate_optimized_out_value ("LLRVAE 2", SYMBOL_TYPE (symbol));
+    return allocate_optimized_out_value (SYMBOL_TYPE (symbol));
 
   return value_of_dwarf_block_entry (SYMBOL_TYPE (symbol), frame, data, size);
 }

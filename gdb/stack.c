@@ -446,7 +446,7 @@ read_frame_arg (struct symbol *sym, struct frame_info *frame,
 	  || print_entry_values == print_entry_values_both
 	  || (print_entry_values == print_entry_values_preferred
 	      && (!val || value_optimized_out (val))))
-	entryval = allocate_optimized_out_value ("stack.c",SYMBOL_TYPE (sym));
+	entryval = allocate_optimized_out_value (SYMBOL_TYPE (sym));
     }
   if ((print_entry_values == print_entry_values_compact
        || print_entry_values == print_entry_values_if_needed

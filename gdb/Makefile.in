@@ -732,6 +732,7 @@ SFILES = ada-exp.y ada-lang.c ada-typeprint.c ada-valprint.c ada-tasks.c \
 	mdebugread.c memattr.c mem-break.c minsyms.c mipsread.c memory-map.c \
 	memrange.c mi/mi-common.c \
 	objc-lang.c \
+        ocaml-lang.c \
 	objfiles.c osabi.c observer.c osdata.c \
 	opencl-lang.c \
 	p-exp.y p-lang.c p-typeprint.c p-valprint.c parse.c printcmd.c \
