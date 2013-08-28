@@ -617,7 +617,7 @@ default_read_var_value (struct symbol *var, struct frame_info *frame)
       break;
 
     case LOC_OPTIMIZED_OUT:
-      return allocate_optimized_out_value ("findvar.c", type);
+      return allocate_optimized_out_value (type);
 
     default:
       error (_("Cannot look up value of a botched symbol `%s'."),
