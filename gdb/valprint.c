@@ -335,6 +335,7 @@ valprint_check_validity (struct ui_file *stream,
 void
 val_print_optimized_out (struct ui_file *stream)
 {
+  /* CR mshinwell: fixme */
   fprintf_filtered (stream, _("<optimized out>"));
 }
 

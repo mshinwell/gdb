@@ -470,6 +470,12 @@ void
 record_block_range (struct block *block,
                     CORE_ADDR start, CORE_ADDR end_inclusive)
 {
+  if (!block) {
+    fprintf(stderr,"warning: block was null for address 0x%p\n", (void*) start);
+    fflush(stderr);
+    return;
+  }
+
   /* If this is any different from the range recorded in the block's
      own BLOCK_START and BLOCK_END, then note that the address map has
      become interesting.  Note that even if this block doesn't have

@@ -69,6 +69,7 @@
 #include "f-lang.h"
 #include "source.h"
 
+#include <stdio.h>
 #include <fcntl.h>
 #include "gdb_string.h"
 #include "gdb_assert.h"
@@ -7990,6 +7991,10 @@ read_file_scope (struct die_info *die, struct dwarf2_cu *cu)
   /* Similar hack for Go.  */
   if (cu->producer && strstr (cu->producer, "GNU Go ") != NULL)
     set_cu_language (DW_LANG_Go, cu);
+
+  /* Likewise for OCaml.  */
+  if (cu->producer && strstr (cu->producer, "ocamlopt ") != NULL)
+    cu->language = language_ocaml;
 
   dwarf2_start_symtab (cu, name, comp_dir, lowpc);
 

@@ -739,10 +739,10 @@ allocate_computed_value (struct type *type,
 /* Allocate NOT_LVAL value for type TYPE being OPTIMIZED_OUT.  */
 
 struct value *
-allocate_optimized_out_value (struct type *type)
+allocate_optimized_out_value (char* desc, struct type *type)
 {
   struct value *retval = allocate_value_lazy (type);
-
+/*printf("allocate_optimized_out_value: %s (type %s)\n", desc, TYPE_NAME(type));fflush(stdout);*/
   set_value_optimized_out (retval, 1);
 
   return retval;
@@ -2627,7 +2627,7 @@ value_primitive_field (struct value *arg1, int offset,
   check_typedef (type);
 
   if (value_optimized_out (arg1))
-    v = allocate_optimized_out_value (type);
+    v = allocate_optimized_out_value ("value_primitive_field", type);
   else if (TYPE_FIELD_BITSIZE (arg_type, fieldno))
     {
       /* Handle packed fields.
