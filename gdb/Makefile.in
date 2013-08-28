@@ -907,7 +907,7 @@ COMMON_OBS = $(DEPFILES) $(CONFIG_OBS) $(YYOBJ) \
 	varobj.o vec.o \
 	go-lang.o go-valprint.o go-typeprint.o \
 	jv-lang.o jv-valprint.o jv-typeprint.o \
-	m2-lang.o opencl-lang.o p-lang.o p-typeprint.o p-valprint.o \
+	m2-lang.o ocaml-lang.o opencl-lang.o p-lang.o p-typeprint.o p-valprint.o \
 	sentinel-frame.o \
 	complaints.o typeprint.o \
 	ada-typeprint.o c-typeprint.o f-typeprint.o m2-typeprint.o \

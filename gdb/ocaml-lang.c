@@ -369,7 +369,6 @@ const struct language_defn ocaml_language_defn =
   "ocaml",			/* Language name */
   language_ocaml,
   range_check_off,
-  type_check_off,
   case_sensitive_on,
   array_row_major,
   macro_expansion_c,
