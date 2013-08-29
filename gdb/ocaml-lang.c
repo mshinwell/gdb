@@ -29,6 +29,7 @@
 #include "c-lang.h"
 #include "gdb_assert.h"
 #include "ocaml-lang.h"
+#include "ocaml-support.h"
 #include "target.h"
 
 #include <ctype.h>
@@ -323,8 +324,11 @@ ocaml_val_print (struct type *type, const gdb_byte *valaddr,
                  const struct value_print_options *options)
 {
   if (is_ocaml_value_type (type)) {
-    ocaml_val_print_ocaml_value (type, valaddr, embedded_offset,
-                                 address, stream, recurse, val, options, 0);
+    if (ocaml_support_val_print (type, valaddr, embedded_offset,
+                                 address, stream, recurse, val, options, 0));
+    else
+      ocaml_val_print_ocaml_value (type, valaddr, embedded_offset,
+                                   address, stream, recurse, val, options, 0);
   }
   else {
     c_val_print (type, valaddr, embedded_offset,
