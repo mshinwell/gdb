@@ -17,7 +17,8 @@ ocaml_support_init (struct gdb_ocaml_support *stubs)
   handle = dlopen (LIB_SUPPORT, RTLD_LAZY | RTLD_GLOBAL);
   if (handle == NULL)
     {
-      fprintf (stderr, "ocaml support: cannot load library %s\n", LIB_SUPPORT);
+      fprintf (stderr, "ocaml support: cannot load library %s (%s)\n",
+               LIB_SUPPORT, dlerror());
       return NULL;
     }
 
@@ -25,8 +26,9 @@ ocaml_support_init (struct gdb_ocaml_support *stubs)
   if (support_init == NULL)
     {
       fprintf (stderr, 
-               "ocaml support: missing symbol gdb_ocaml_support_init in %s\n", 
-               LIB_SUPPORT);
+               "ocaml support: missing symbol "
+               "gdb_ocaml_support_init in %s (%s)\n", 
+               LIB_SUPPORT, dlerror());
       dlclose (handle);
       return NULL;
     }
