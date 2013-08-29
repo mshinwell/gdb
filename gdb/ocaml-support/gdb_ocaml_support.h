@@ -14,15 +14,13 @@
 #include "ocaml-lang.h"
 #include "target.h"
 
-int
-gdb_ocaml_support_init(void);
+int gdb_ocaml_support_init (void);
 
-void
-gdb_ocaml_support_val_print (struct type *type, const gdb_byte *valaddr,
-                            int embedded_offset,
-                            CORE_ADDR address, struct ui_file *stream,
-                            int recurse, const struct value *val,
-                            const struct value_print_options *options,
-                            int depth);
+void gdb_ocaml_support_val_print (struct type *type, const gdb_byte *valaddr,
+                                  int embedded_offset,
+                                  CORE_ADDR address, struct ui_file *stream,
+                                  int recurse, const struct value *val,
+                                  const struct value_print_options *options,
+                                  int depth);
 
 #endif /*!GDB_OCAML_SUPPORT*/

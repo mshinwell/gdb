@@ -8,16 +8,16 @@
 #include "expression.h"
 #include "language.h"
 
-typedef struct {
+struct gdb_ocaml_support {
   void (*val_print) (struct type *type, const gdb_byte *valaddr,
                      int embedded_offset,
                      CORE_ADDR address, struct ui_file *stream,
                      int recurse, const struct value *val,
                      const struct value_print_options *options,
                      int depth);
-} gdb_ocaml_support_t;
+};
 
-gdb_ocaml_support_t* ocaml_support_library(void);
+struct gdb_ocaml_support *ocaml_support_library(void);
 
 int ocaml_support_val_print (struct type *type, const gdb_byte *valaddr,
                              int embedded_offset,
