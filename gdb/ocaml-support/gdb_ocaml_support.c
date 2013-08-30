@@ -57,11 +57,16 @@ ocaml_val_print (value callback,
   struct symtab* symtab;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
 
+  /* CR mshinwell: need to work out how to stop gdb from printing the stamps,
+     now that the linkage names include those. */
+
   /* Extract the linkage name (equivalent of [Ident.unique_name]) from the
      symbol that we're being asked to print, if such a symbol exists. */
   if (symbol) {
+/*
     printf("linkage name '%s', natural name '%s'\n",
       SYMBOL_LINKAGE_NAME(symbol), SYMBOL_NATURAL_NAME(symbol));
+*/
     symbol_linkage_name = SYMBOL_LINKAGE_NAME(symbol);
     if (symbol_linkage_name) {
       v_symbol = caml_copy_string(symbol_linkage_name);
@@ -79,7 +84,7 @@ ocaml_val_print (value callback,
 
   /* Determine the source file that defines the symbol.  This will be used
      to load the appropriate .cmt file. */
-  symtab = SYMBOL_SYMTAB(symbol);
+  symtab = symbol ? SYMBOL_SYMTAB(symbol) : NULL;
   if (symtab) {
     gdb_assert(symtab->filename != NULL);  /* as per symtab.h */
     if (symtab->dirname) {

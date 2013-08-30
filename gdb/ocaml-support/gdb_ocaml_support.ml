@@ -26,6 +26,8 @@ end = struct
     }
 
   let create_idents_to_types_map ~cmt_infos =
+    (* CR mshinwell: needs to keep track of the environment, to resolve
+       [Path.t]s *)
     let rec process_pattern ~pat ~idents_to_types =
       match pat.Typedtree.pat_desc with
       | Typedtree.Tpat_var (ident, _loc) ->
@@ -146,33 +148,120 @@ end = struct
       | None -> []
       | Some cmt_infos -> create_idents_to_types_map ~cmt_infos
     in
+(*
     List.iter idents_to_types
       ~f:(fun (ident, _type) ->
             Printf.printf "idents_to_types: '%s'\n" ident);
+*)
     { cmi_infos;
       cmt_infos;
       idents_to_types;
     }
 
   let type_of_ident t ~unique_name =
+(*
     Printf.printf "trying to find '%s'\n%!" unique_name;
+*)
     try Some (List.assoc unique_name t.idents_to_types) with Not_found -> None
 end
-
+(*
 let _ = prerr_endline "Hello from ml world!"
+*)
+
+let val_print_int ~value ~gdb_stream ~symbol_linkage_name ~cmt_file =
+  let default () =
+    let value = Gdb.Obj.int value in
+    Gdb.printf gdb_stream "%d" value
+  in
+  match symbol_linkage_name with
+  | None ->
+    default ();
+    Gdb.printf gdb_stream " [!]"
+  | Some unique_name ->
+    match Cmt_file.type_of_ident cmt_file ~unique_name with
+    | None ->
+      default ();
+      Gdb.printf gdb_stream " [*]"
+    | Some type_expr ->
+      let rec print_type_expr type_expr =
+        (* CR mshinwell: note---only for debugging *)
+        match type_expr.Types.desc with
+        | Types.Tconstr (path, [], _abbrev_memo_ref) ->
+          Gdb.printf gdb_stream "!! %s" (Path.name path)
+          (* CR mshinwell: ... and now we need the type definition again. sigh *)
+        | Types.Tvariant row_desc ->
+          Gdb.printf gdb_stream "Tvariant"
+        | Types.Tvar _ ->
+          Gdb.printf gdb_stream "Tvar"
+        | Types.Tarrow _ ->
+          Gdb.printf gdb_stream ". -> ."
+        | Types.Ttuple _ ->
+          Gdb.printf gdb_stream "Tuple"
+        | Types.Tconstr _ ->
+          Gdb.printf gdb_stream "constr"
+        | Types.Tobject _ ->
+          Gdb.printf gdb_stream "obj"
+        | Types.Tfield _ ->
+          Gdb.printf gdb_stream "field"
+        | Types.Tnil ->
+          Gdb.printf gdb_stream "nil"
+        | Types.Tlink type_expr -> print_type_expr type_expr
+        | Types.Tsubst _ ->
+          Gdb.printf gdb_stream "subst"
+        | Types.Tunivar _ ->
+          Gdb.printf gdb_stream "univar"
+        | Types.Tpoly _ ->
+          Gdb.printf gdb_stream "poly"
+        | Types.Tpackage _ ->
+          Gdb.printf gdb_stream "package"
+      in
+      print_type_expr type_expr
 
 let rec val_print ~depth v out ~symbol_linkage_name ~cmt_file =
-  if depth > 2 then Gdb.print out ".." else 
-  begin match symbol_linkage_name with
+  if depth > 2 then Gdb.print out ".." else begin
+    if Gdb.Obj.is_int v
+    then val_print_int ~gdb_stream:out ~symbol_linkage_name ~cmt_file ~value:v
+    else begin
+      if Gdb.Obj.is_block v then
+      begin match Gdb.Obj.tag v with
+        | tag when tag < Gdb.Obj.closure_tag  ->
+          begin
+            if tag > 0 then Gdb.printf out "tag %d:" tag;
+            Gdb.print out "(";
+            for field = 0 to Gdb.Obj.size v - 1 do
+              if field > 0 then Gdb.print out ", ";
+              try 
+                let v' = Gdb.Obj.field v field in
+                val_print ~depth:(succ depth) v' out ~symbol_linkage_name:None
+                  ~cmt_file
+              with Gdb.Read_error _ ->
+                Gdb.printf out "<field %d read failed>" field
+            done;
+            Gdb.print out ")"
+          end
+        | tag when tag = Gdb.Obj.string_tag ->
+          Gdb.printf out "%S" (Gdb.Obj.string v)
+        | tag -> Gdb.printf out "<tag %d, TODO>" tag
+      end
+      else Gdb.printf out "<unaligned object>"
+    end;
+    match symbol_linkage_name with
     | None -> ()
     | Some symbol_linkage_name ->
-      Gdb.printf out "%s=" symbol_linkage_name;
       match Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name with
-      | None -> Printf.printf "'%s' not found in cmt\n" symbol_linkage_name
+      | None -> ()
+        (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
       | Some type_expr ->
-        let formatter = Format.std_formatter in
+        Gdb.print out " : ";
+        let formatter =
+          Format.make_formatter
+            (fun str pos len -> Gdb.print out (String.sub str pos len))
+            (fun () -> ())
+        in
+        (* CR mshinwell: why doesn't this print anything?? *)
         Printtyp.type_expr formatter type_expr;
         Format.print_flush ()
+  end
 
 (*
         match type_expr.Types.desc with
@@ -180,31 +269,6 @@ let rec val_print ~depth v out ~symbol_linkage_name ~cmt_file =
           Printf.printf "constructor: %s\n" (Path.name path)
         | 
 *)
-  end;
-  if Gdb.Obj.is_int v
-  then Gdb.printf out "%d" (Gdb.Obj.int v)
-  else if Gdb.Obj.is_block v then
-  begin match Gdb.Obj.tag v with
-    | tag when tag < Gdb.Obj.closure_tag  ->
-      begin
-        if tag > 0 then Gdb.printf out "tag %d:" tag;
-        Gdb.print out "(";
-        for field = 0 to Gdb.Obj.size v - 1 do
-          if field > 0 then Gdb.print out ", ";
-          try 
-            let v' = Gdb.Obj.field v field in
-            val_print ~depth:(succ depth) v' out ~symbol_linkage_name:None
-              ~cmt_file
-          with Gdb.Read_error _ ->
-            Gdb.printf out "<field %d read failed>" field
-        done;
-        Gdb.print out ")"
-      end
-    | tag when tag = Gdb.Obj.string_tag ->
-      Gdb.printf out "%S" (Gdb.Obj.string v)
-    | tag -> Gdb.printf out "<tag %d, TODO>" tag
-  end
-  else Gdb.printf out "<unaligned object>"
 
 let val_print addr stream ~symbol_linkage_name ~source_file_path =
   let cmt_file =
