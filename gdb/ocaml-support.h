@@ -16,6 +16,8 @@ struct gdb_ocaml_support {
                      int recurse, const struct value *val,
                      const struct value_print_options *options,
                      int depth);
+  void (*demangle) (const char *name,
+                    int options);
 };
 
 struct gdb_ocaml_support *ocaml_support_library(void);

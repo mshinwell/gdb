@@ -241,7 +241,43 @@ let rec val_print ~depth v out ~symbol_linkage_name ~cmt_file =
           end
         | tag when tag = Gdb.Obj.string_tag ->
           Gdb.printf out "%S" (Gdb.Obj.string v)
-        | tag -> Gdb.printf out "<tag %d, TODO>" tag
+        | tag when tag = Gdb.Obj.string_tag ->
+          Gdb.printf out "%S" (Gdb.Obj.string v)
+        | tag when tag = Gdb.Obj.double_tag ->
+          begin try 
+            Gdb.printf out "%f" (Gdb.Target.read_double v)
+          with Gdb.Read_error _ ->
+            Gdb.print out "<double read failed>"
+          end
+        | tag when tag = Gdb.Obj.closure_tag ->
+          begin try
+            let pc = Gdb.Target.read_field v 0 in
+            match Gdb.Priv.gdb_find_pc_line pc ~not_current:false with
+            | None -> Gdb.print out "<closure>"
+            | Some {Gdb.Priv. symtab; line = Some line} ->
+              Gdb.printf out "<%s:%d>" (Gdb.Priv.gdb_symtab_filename symtab) line
+            | Some {Gdb.Priv. symtab} ->
+              Gdb.printf out "<closure %s, unknown line number>"
+                (Gdb.Priv.gdb_symtab_filename symtab)
+          with Gdb.Read_error _ ->
+            Gdb.print out "<closure, failed to read code ptr>"
+          end
+
+        | tag when tag = Gdb.Obj.lazy_tag ->
+          Gdb.printf out "<lazy>"
+        | tag when tag = Gdb.Obj.object_tag ->
+          Gdb.printf out "<object>"
+        | tag when tag = Gdb.Obj.infix_tag ->
+          Gdb.printf out "<infix>"
+        | tag when tag = Gdb.Obj.forward_tag ->
+          Gdb.printf out "<forward>"
+        | tag when tag = Gdb.Obj.abstract_tag ->
+          Gdb.printf out "<abstract>"
+        | tag when tag = Gdb.Obj.custom_tag ->
+          Gdb.printf out "<custom>"
+        | tag when tag = Gdb.Obj.double_array_tag ->
+          Gdb.printf out "<double array>"
+        | tag -> Gdb.printf out "<v=%Ld, tag %d>" v tag
       end
       else Gdb.printf out "<unaligned object>"
     end;
@@ -294,3 +330,7 @@ let val_print addr stream ~symbol_linkage_name ~source_file_path =
   val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file
 
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
+
+
+let demangle name options = "TODO"
+let () = Callback.register "gdb_ocaml_support_demangle" val_print

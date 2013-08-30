@@ -24,9 +24,27 @@ module Priv = struct
     : gdb_stream -> string -> unit 
     = "ml_gdb_print_filtered"
 
+  type symtab
+  type symtab_and_line = {
+    symtab : symtab;
+    line : int option;
+    addr_pc : addr;
+    addr_end : addr;
+  }
+
+  external gdb_find_pc_line
+    : addr -> not_current:bool -> symtab_and_line option
+    = "ml_gdb_find_pc_line"
+
+  external gdb_symtab_filename
+    : symtab -> string
+    = "ml_gdb_symtab_filename"
+
   (* Expected type of callbacks *)
   type callback_print_val
     = addr -> gdb_stream -> unit
+  type callback_demangle
+    = string -> int -> string
 end
 
 let print = Priv.gdb_print_filtered

@@ -60,6 +60,7 @@ ocaml_support_init (struct gdb_ocaml_support *stubs)
     }
 
   SET_STUB (stubs, handle, val_print);
+  SET_STUB (stubs, handle, demangle);
 
   return handle;
 }
