@@ -190,21 +190,24 @@ let rec val_print ~depth v out ~symbol_linkage_name ~cmt_file =
 
 let val_print addr stream ~symbol_linkage_name ~source_file_path =
   let cmt_file =
-    if String.length source_file_path > 3
-      && String.get source_file_path
-           (String.length source_file_path - 1) = 'l'
-      && String.get source_file_path
-           (String.length source_file_path - 2) = 'm'
-      && String.get source_file_path
-           (String.length source_file_path - 3) = '.'
-    then
-      let filename =
-        (String.sub source_file_path 0 (String.length source_file_path - 3))
-          ^ ".cmt"
-      in
-      Cmt_file.load ~filename
-    else
-      Cmt_file.create_null ()
+    match source_file_path with
+    | None -> Cmt_file.create_null ()
+    | Some source_file_path ->
+      if String.length source_file_path > 3
+        && String.get source_file_path
+             (String.length source_file_path - 1) = 'l'
+        && String.get source_file_path
+             (String.length source_file_path - 2) = 'm'
+        && String.get source_file_path
+             (String.length source_file_path - 3) = '.'
+      then
+        let filename =
+          (String.sub source_file_path 0 (String.length source_file_path - 3))
+            ^ ".cmt"
+        in
+        Cmt_file.load ~filename
+      else
+        Cmt_file.create_null ()
   in
   val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file
 

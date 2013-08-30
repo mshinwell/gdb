@@ -75,9 +75,9 @@ ocaml_val_print (value callback,
     v_symbol_option = Val_long(0);  /* None */
   }
 
-  /* Use the address of [symbol] to determine the source file that defines
-     the symbol.  This will be used to load the appropriate .cmt file. */
-  symtab = find_pc_symtab(SYMBOL_VALUE_ADDRESS(symbol));
+  /* Determine the source file that defines the symbol.  This will be used
+     to load the appropriate .cmt file. */
+  symtab = SYMBOL_SYMTAB(symbol);
   if (symtab) {
     gdb_assert(symtab->filename != NULL);  /* as per symtab.h */
     if (symtab->dirname) {
