@@ -50,27 +50,58 @@ ocaml_val_print (value callback,
                  int depth)
 {
   CAMLparam0();
-  CAMLlocal1(v_symbol);
-  value v_symbol_option;
+  CAMLlocal3(v_symbol, v_symbol_option, v_source_path);
+  value v_source_path_option;
   CAMLlocalN(args, 3);
   char* symbol_linkage_name;
+  struct symtab* symtab;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
 
-  symbol_linkage_name = SYMBOL_LINKAGE_NAME(symbol);
-  if (symbol_linkage_name) {
-    v_symbol = caml_copy_string(symbol_linkage_name);
-    v_symbol_option = caml_alloc_small(1, 0 /* Some */);
-    Field(v_symbol_option, 0) = symbol;
+  /* Extract the linkage name (equivalent of [Ident.unique_name]) from the
+     symbol that we're being asked to print, if such a symbol exists. */
+  if (symbol) {
+    symbol_linkage_name = SYMBOL_LINKAGE_NAME(symbol);
+    if (symbol_linkage_name) {
+      v_symbol = caml_copy_string(symbol_linkage_name);
+      v_symbol_option = caml_alloc_small(1, 0 /* Some */);
+      Field(v_symbol_option, 0) = symbol;
+    }
+    else {
+      v_symbol_option = Val_long(0);  /* None */
+    }
   }
   else {
+    /* No symbol is available. */
     v_symbol_option = Val_long(0);  /* None */
   }
 
+  /* Use the address of [symbol] to determine the source file that defines
+     the symbol.  This will be used to load the appropriate .cmt file. */
+  symtab = find_pc_symtab(SYMBOL_VALUE_ADDRESS(symbol));
+  if (symtab) {
+    gdb_assert(symtab->filename != NULL);  /* as per symtab.h */
+    if (symtab->dirname) {
+      char* temp;
+      temp = xmalloc(strlen(symtab->dirname) + strlen(symtab->filename) + 2);
+      sprintf(temp, "%s/%s", symtab->dirname, symtab->filename);
+      v_source_path = caml_copy_string(temp);
+      xfree(temp);
+    }
+    else {
+      v_source_path = caml_copy_string(symtab->filename);
+    }
+    v_source_path_option = caml_alloc_small(1, 0 /* Some */);
+    Field(v_source_path_option, 0) = v_source_path;
+  } else {
+    v_source_path_option = Val_long(0);  /* None */
+  }
+
+  /* The printing code itself is written in OCaml. */
   args[0] = Val_target (*(CORE_ADDR*)valaddr);
   args[1] = Val_ptr (stream);
   args[2] = v_symbol_option;
-
-  (void) caml_callbackN (callback, 3, args);
+  args[3] = v_source_path_option;
+  (void) caml_callbackN (callback, 4, args);
 
   CAMLreturn0;
 }
