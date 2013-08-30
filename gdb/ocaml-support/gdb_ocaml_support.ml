@@ -20,74 +20,74 @@ end = struct
   let create_idents_to_types_map ~cmt_infos =
     let rec process_pattern ~pat ~idents_to_types =
       match pat with
-        | Tpat_var (ident, _loc) ->
-          (Ident.unique_name ident, pat.Typedtree.pat_type)::idents_to_types
-        | Tpat_alias of (pat, ident, _loc) ->
-          process_pattern ~pat
-            ~idents_to_types:
-              (Ident.unique_name ident,
-               pat.Typedtree.pat_type)::idents_to_types
-        | Tpat_tuple pats
-        | Tpat_construct of (_, _, pats, _)
-        | Tpat_array pats ->
-          List.fold pats
-            ~init:idents_to_types
-            ~f:(fun idents_to_types pat ->
-                  process_pattern ~pat ~idents_to_types)
-        | Tpat_variant (_label, pat_opt, _row_desc) ->
-          begin match pat_opt with
-          | None -> idents_to_types
-          | Some pat -> process_pattern ~pat ~idents_to_types
-          end
-        | Tpat_record of (loc_desc_pat_list, _closed) ->
-          List.fold loc_desc_pat_list
-            ~init:idents_to_types
-            ~f:(fun idents_to_types (_loc, _desc, pat) ->
-                  process_pattern ~pat ~idents_to_types)
-        | Tpat_or (pat1, pat2, _row_desc) ->
-          process_pattern ~pat:pat1
-            ~idents_to_types:(process_pattern ~pat:pat2 ~idents_to_types)
-        | Tpat_lazy of pat ->
-          process_pattern ~pat ~idents_to_types
-        | Tpat_any
-        | Tpat_constant _ -> idents_to_types
+      | Typedtree.Tpat_var (ident, _loc) ->
+        (Ident.unique_name ident, pat.Typedtree.pat_type)::idents_to_types
+      | Typedtree.Tpat_alias (pat, ident, _loc) ->
+        process_pattern ~pat
+          ~idents_to_types:
+            (Ident.unique_name ident,
+             pat.Typedtree.pat_type)::idents_to_types
+      | Typedtree.Tpat_tuple pats
+      | Typedtree.Tpat_construct (_, _, pats, _)
+      | Typedtree.Tpat_array pats ->
+        List.fold pats
+          ~init:idents_to_types
+          ~f:(fun idents_to_types pat ->
+                process_pattern ~pat ~idents_to_types)
+      | Typedtree.Tpat_variant (_label, pat_opt, _row_desc) ->
+        begin match pat_opt with
+        | None -> idents_to_types
+        | Some pat -> process_pattern ~pat ~idents_to_types
+        end
+      | Typedtree.Tpat_record (loc_desc_pat_list, _closed) ->
+        List.fold loc_desc_pat_list
+          ~init:idents_to_types
+          ~f:(fun idents_to_types (_loc, _desc, pat) ->
+                process_pattern ~pat ~idents_to_types)
+      | Typedtree.Tpat_or (pat1, pat2, _row_desc) ->
+        process_pattern ~pat:pat1
+          ~idents_to_types:(process_pattern ~pat:pat2 ~idents_to_types)
+      | Typedtree.Tpat_lazy pat ->
+        process_pattern ~pat ~idents_to_types
+      | Typedtree.Tpat_any
+      | Typedtree.Tpat_constant _ -> idents_to_types
     and process_expression ~exp ~idents_to_types =
       match exp with
-      | Texp_let (_rec, pat_exp_list, body) ->
+      | Typedtree.Texp_let (_rec, pat_exp_list, body) ->
         process_expression ~exp:body
           ~idents_to_types:
             (process_pat_exp_list ~pat_exp_list ~idents_to_types)
-      | Texp_function (_label, pat_exp_list, _partial) ->
+      | Typedtree.Texp_function (_label, pat_exp_list, _partial) ->
         process_pat_exp_list ~pat_exp_list ~idents_to_types
       (* CR mshinwell: this needs finishing, yuck *)
-      | Texp_ident _
-      | Texp_constant _
-      | Texp_apply _
-      | Texp_match _
-      | Texp_try _
-      | Texp_tuple _
-      | Texp_construct _
-      | Texp_variant _
-      | Texp_record _
-      | Texp_field _
-      | Texp_setfield _
-      | Texp_array _
-      | Texp_ifthenelse _
-      | Texp_sequence _
-      | Texp_while _
-      | Texp_for _
-      | Texp_when _
-      | Texp_send _
-      | Texp_new _
-      | Texp_instvar _
-      | Texp_setinstvar _
-      | Texp_override _
-      | Texp_letmodule _
-      | Texp_assert _
-      | Texp_assertfalse
-      | Texp_lazy _
-      | Texp_object _
-      | Texp_pack _ -> idents_to_types
+      | Typedtree.Texp_ident _
+      | Typedtree.Texp_constant _
+      | Typedtree.Texp_apply _
+      | Typedtree.Texp_match _
+      | Typedtree.Texp_try _
+      | Typedtree.Texp_tuple _
+      | Typedtree.Texp_construct _
+      | Typedtree.Texp_variant _
+      | Typedtree.Texp_record _
+      | Typedtree.Texp_field _
+      | Typedtree.Texp_setfield _
+      | Typedtree.Texp_array _
+      | Typedtree.Texp_ifthenelse _
+      | Typedtree.Texp_sequence _
+      | Typedtree.Texp_while _
+      | Typedtree.Texp_for _
+      | Typedtree.Texp_when _
+      | Typedtree.Texp_send _
+      | Typedtree.Texp_new _
+      | Typedtree.Texp_instvar _
+      | Typedtree.Texp_setinstvar _
+      | Typedtree.Texp_override _
+      | Typedtree.Texp_letmodule _
+      | Typedtree.Texp_assert _
+      | Typedtree.Texp_assertfalse
+      | Typedtree.Texp_lazy _
+      | Typedtree.Texp_object _
+      | Typedtree.Texp_pack _ -> idents_to_types
     and process_pat_exp_list ~pat_exp_list ~idents_to_types =
       List.fold pat_exp_list
         ~f:(fun idents_to_types (pat, exp) ->
@@ -124,7 +124,7 @@ end = struct
             (* CR mshinwell: find out what "partial" implementations and
                interfaces are, and fix cmt_format.mli so it tells you *)
             | Cmt_format.Partial_implementation _
-            | Cmt_format.Partial_interface _ ->
+            | Cmt_format.Partial_interface _
             | Cmt_format.Implementation structure ->
               process_implementation ~structure ~idents_to_types)
 

@@ -53,7 +53,7 @@ ocaml_val_print (value callback,
   CAMLlocal3(v_symbol, v_symbol_option, v_source_path);
   value v_source_path_option;
   CAMLlocalN(args, 3);
-  char* symbol_linkage_name;
+  const char* symbol_linkage_name;
   struct symtab* symtab;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
 
@@ -64,7 +64,7 @@ ocaml_val_print (value callback,
     if (symbol_linkage_name) {
       v_symbol = caml_copy_string(symbol_linkage_name);
       v_symbol_option = caml_alloc_small(1, 0 /* Some */);
-      Field(v_symbol_option, 0) = symbol;
+      Field(v_symbol_option, 0) = v_symbol;
     }
     else {
       v_symbol_option = Val_long(0);  /* None */
