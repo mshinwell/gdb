@@ -5,7 +5,9 @@ module List = ListLabels
 module Cmt_file : sig
   type t
 
-  val load : filename:string -> t option
+  val create_null : unit -> t
+  val load : filename:string -> t
+
   val type_of_ident : t -> unique_name:string -> Types.type_expr option
 end = struct
   type t = {
@@ -17,20 +19,26 @@ end = struct
     idents_to_types : (string * Types.type_expr) list;
   }
 
+  let create_null () =
+    { cmi_infos = None;
+      cmt_infos = None;
+      idents_to_types = [];
+    }
+
   let create_idents_to_types_map ~cmt_infos =
     let rec process_pattern ~pat ~idents_to_types =
-      match pat with
+      match pat.Typedtree.pat_desc with
       | Typedtree.Tpat_var (ident, _loc) ->
         (Ident.unique_name ident, pat.Typedtree.pat_type)::idents_to_types
       | Typedtree.Tpat_alias (pat, ident, _loc) ->
         process_pattern ~pat
           ~idents_to_types:
-            (Ident.unique_name ident,
-             pat.Typedtree.pat_type)::idents_to_types
+            ((Ident.unique_name ident,
+             pat.Typedtree.pat_type)::idents_to_types)
       | Typedtree.Tpat_tuple pats
       | Typedtree.Tpat_construct (_, _, pats, _)
       | Typedtree.Tpat_array pats ->
-        List.fold pats
+        List.fold_left pats
           ~init:idents_to_types
           ~f:(fun idents_to_types pat ->
                 process_pattern ~pat ~idents_to_types)
@@ -40,7 +48,7 @@ end = struct
         | Some pat -> process_pattern ~pat ~idents_to_types
         end
       | Typedtree.Tpat_record (loc_desc_pat_list, _closed) ->
-        List.fold loc_desc_pat_list
+        List.fold_left loc_desc_pat_list
           ~init:idents_to_types
           ~f:(fun idents_to_types (_loc, _desc, pat) ->
                 process_pattern ~pat ~idents_to_types)
@@ -52,7 +60,7 @@ end = struct
       | Typedtree.Tpat_any
       | Typedtree.Tpat_constant _ -> idents_to_types
     and process_expression ~exp ~idents_to_types =
-      match exp with
+      match exp.Typedtree.exp_desc with
       | Typedtree.Texp_let (_rec, pat_exp_list, body) ->
         process_expression ~exp:body
           ~idents_to_types:
@@ -89,13 +97,14 @@ end = struct
       | Typedtree.Texp_object _
       | Typedtree.Texp_pack _ -> idents_to_types
     and process_pat_exp_list ~pat_exp_list ~idents_to_types =
-      List.fold pat_exp_list
+      List.fold_left pat_exp_list
+        ~init:idents_to_types
         ~f:(fun idents_to_types (pat, exp) ->
               process_pattern ~pat
                 ~idents_to_types:(process_expression ~exp ~idents_to_types))
     in
     let process_implementation ~structure ~idents_to_types =
-      List.fold structure.Typedtree.str_items
+      List.fold_left structure.Typedtree.str_items
         ~init:idents_to_types
         ~f:(fun idents_to_types str_item ->
               match str_item.Typedtree.str_desc with
@@ -115,22 +124,20 @@ end = struct
               | Typedtree.Tstr_include _ -> idents_to_types)
     in
     let cmt_annots = cmt_infos.Cmt_format.cmt_annots in
-    List.fold cmt_annots
-      ~init:[]
-      ~f:(fun idents_to_types binary_annot ->
-            match binary_annot with
-            | Cmt_format.Packed _
-            | Cmt_format.Interface _
-            (* CR mshinwell: find out what "partial" implementations and
-               interfaces are, and fix cmt_format.mli so it tells you *)
-            | Cmt_format.Partial_implementation _
-            | Cmt_format.Partial_interface _
-            | Cmt_format.Implementation structure ->
-              process_implementation ~structure ~idents_to_types)
+    match cmt_annots with
+    | Cmt_format.Packed _
+    | Cmt_format.Interface _
+    (* CR mshinwell: find out what "partial" implementations and
+       interfaces are, and fix cmt_format.mli so it tells you *)
+    | Cmt_format.Partial_implementation _
+    | Cmt_format.Partial_interface _ -> []
+    | Cmt_format.Implementation structure ->
+      process_implementation ~structure ~idents_to_types:[]
 
   let load ~filename =
     let cmi_infos, cmt_infos =
       (* CR mshinwell: find out what the failure behaviour of [read] is *)
+      Printf.printf "reading cmt file '%s'\n%!" filename;
       Cmt_format.read filename
     in
     let idents_to_types =
@@ -149,7 +156,7 @@ end
 
 let _ = prerr_endline "Hello from ml world!"
 
-let rec val_print ~depth v out ~symbol_linkage_name =
+let rec val_print ~depth v out ~symbol_linkage_name ~cmt_file =
   if depth > 2 then Gdb.print out ".." else 
   begin match symbol_linkage_name with
     | None -> ()
@@ -169,6 +176,7 @@ let rec val_print ~depth v out ~symbol_linkage_name =
           try 
             let v' = Gdb.Obj.field v field in
             val_print ~depth:(succ depth) v' out ~symbol_linkage_name:None
+              ~cmt_file
           with Gdb.Read_error _ ->
             Gdb.printf out "<field %d read failed>" field
         done;
@@ -181,6 +189,23 @@ let rec val_print ~depth v out ~symbol_linkage_name =
   else Gdb.printf out "<unaligned object>"
 
 let val_print addr stream ~symbol_linkage_name ~source_file_path =
+  let cmt_file =
+    if String.length source_file_path > 3
+      && String.get source_file_path
+           (String.length source_file_path - 1) = 'l'
+      && String.get source_file_path
+           (String.length source_file_path - 2) = 'm'
+      && String.get source_file_path
+           (String.length source_file_path - 3) = '.'
+    then
+      let filename =
+        (String.sub source_file_path 0 (String.length source_file_path - 3))
+          ^ ".cmt"
+      in
+      Cmt_file.load ~filename
+    else
+      Cmt_file.create_null ()
+  in
   val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file
 
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
