@@ -9,7 +9,8 @@
 #include "language.h"
 
 struct gdb_ocaml_support {
-  void (*val_print) (struct type *type, const gdb_byte *valaddr,
+  void (*val_print) (struct type *type, struct symbol *symbol,
+                     const gdb_byte *valaddr,
                      int embedded_offset,
                      CORE_ADDR address, struct ui_file *stream,
                      int recurse, const struct value *val,
@@ -19,7 +20,8 @@ struct gdb_ocaml_support {
 
 struct gdb_ocaml_support *ocaml_support_library(void);
 
-int ocaml_support_val_print (struct type *type, const gdb_byte *valaddr,
+int ocaml_support_val_print (struct type *type, struct symbol *symbol,
+                             const gdb_byte *valaddr,
                              int embedded_offset,
                              CORE_ADDR address, struct ui_file *stream,
                              int recurse, const struct value *val,

@@ -247,7 +247,7 @@ print_variable_at_address (struct type *type,
       struct value *deref_val =
 	value_at (TYPE_TARGET_TYPE (type), unpack_pointer (type, valaddr));
 
-      common_val_print (deref_val, stream, recurse, options, current_language);
+      common_val_print (deref_val, NULL, stream, recurse, options, current_language);
     }
   else
     fputs_filtered ("???", stream);
@@ -308,7 +308,8 @@ static const struct generic_val_print_decorations m2_decorations =
    function; they are identical.  */
 
 void
-m2_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
+m2_val_print (struct type *type, struct symbol *symbol,
+              const gdb_byte *valaddr, int embedded_offset,
 	      CORE_ADDR address, struct ui_file *stream, int recurse,
 	      const struct value *original_value,
 	      const struct value_print_options *options)
@@ -471,7 +472,7 @@ m2_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
     case TYPE_CODE_RANGE:
       if (TYPE_LENGTH (type) == TYPE_LENGTH (TYPE_TARGET_TYPE (type)))
 	{
-	  m2_val_print (TYPE_TARGET_TYPE (type), valaddr, embedded_offset,
+	  m2_val_print (TYPE_TARGET_TYPE (type), NULL, valaddr, embedded_offset,
 			address, stream, recurse, original_value, options);
 	  break;
 	}
@@ -496,7 +497,7 @@ m2_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
     case TYPE_CODE_BOOL:
     case TYPE_CODE_CHAR:
     default:
-      generic_val_print (type, valaddr, embedded_offset, address,
+      generic_val_print (type, NULL, valaddr, embedded_offset, address,
 			 stream, recurse, original_value, options,
 			 &m2_decorations);
       break;

@@ -280,7 +280,7 @@ print_frame_arg (const struct frame_arg *arg)
 	      /* True in "summary" mode, false otherwise.  */
 	      opts.summary = !strcmp (print_frame_arguments, "scalars");
 
-	      common_val_print (arg->val, stb, 2, &opts, language);
+	      common_val_print (arg->val, arg->sym, stb, 2, &opts, language);
 	    }
 	}
       if (except.message)

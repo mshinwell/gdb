@@ -898,14 +898,15 @@ extern void value_print_array_elements (struct value *val,
 
 extern struct value *value_release_to_mark (struct value *mark);
 
-extern void val_print (struct type *type, const gdb_byte *valaddr,
+extern void val_print (struct type *type, struct symbol *symbol,
+                       const gdb_byte *valaddr,
 		       int embedded_offset, CORE_ADDR address,
 		       struct ui_file *stream, int recurse,
 		       const struct value *val,
 		       const struct value_print_options *options,
 		       const struct language_defn *language);
 
-extern void common_val_print (struct value *val,
+extern void common_val_print (struct value *val, struct symbol *symbol,
 			      struct ui_file *stream, int recurse,
 			      const struct value_print_options *options,
 			      const struct language_defn *language);

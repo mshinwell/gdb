@@ -42,7 +42,8 @@ struct builtin_java_type
 
 extern const struct builtin_java_type *builtin_java_type (struct gdbarch *);
 
-extern void java_val_print (struct type *, const gdb_byte *, int, CORE_ADDR,
+extern void java_val_print (struct type *, struct symbol *,
+                            const gdb_byte *, int, CORE_ADDR,
 			    struct ui_file *, int,
 			    const struct value *,
 			    const struct value_print_options *);

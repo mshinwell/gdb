@@ -72,7 +72,8 @@ extern void c_print_typedef (struct type *,
 			     struct symbol *,
 			     struct ui_file *);
 
-extern void c_val_print (struct type *, const gdb_byte *,
+extern void c_val_print (struct type *, struct symbol *,
+                         const gdb_byte *,
 			 int, CORE_ADDR,
 			 struct ui_file *, int,
 			 const struct value *,

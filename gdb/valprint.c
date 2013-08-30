@@ -363,7 +363,8 @@ val_print_invalid_address (struct ui_file *stream)
    output in some small, language-specific ways.  */
 
 void
-generic_val_print (struct type *type, const gdb_byte *valaddr,
+generic_val_print (struct type *type, struct symbol *symbol,
+                   const gdb_byte *valaddr,
 		   int embedded_offset, CORE_ADDR address,
 		   struct ui_file *stream, int recurse,
 		   const struct value *original_value,
@@ -471,7 +472,7 @@ generic_val_print (struct type *type, const gdb_byte *valaddr,
 						      (valaddr
 						       + embedded_offset)));
 
-	      common_val_print (deref_val, stream, recurse, options,
+	      common_val_print (deref_val, NULL, stream, recurse, options,
 				current_language);
 	    }
 	  else
@@ -726,7 +727,8 @@ generic_val_print (struct type *type, const gdb_byte *valaddr,
    RECURSE.  */
 
 void
-val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
+val_print (struct type *type, struct symbol *symbol,
+           const gdb_byte *valaddr, int embedded_offset,
 	   CORE_ADDR address, struct ui_file *stream, int recurse,
 	   const struct value *val,
 	   const struct value_print_options *options,
@@ -776,8 +778,8 @@ val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
 
   TRY_CATCH (except, RETURN_MASK_ERROR)
     {
-      language->la_val_print (type, valaddr, embedded_offset, address,
-			      stream, recurse, val,
+      language->la_val_print (type, symbol, valaddr, embedded_offset,
+                              address, stream, recurse, val,
 			      &local_opts);
     }
   if (except.reason < 0)
@@ -824,7 +826,8 @@ value_check_printable (struct value *val, struct ui_file *stream,
    GDB's value mechanism.  */
 
 void
-common_val_print (struct value *val, struct ui_file *stream, int recurse,
+common_val_print (struct value *val, struct symbol *symbol,
+                  struct ui_file *stream, int recurse,
 		  const struct value_print_options *options,
 		  const struct language_defn *language)
 {
@@ -838,7 +841,8 @@ common_val_print (struct value *val, struct ui_file *stream, int recurse,
        get a fixed representation of our value.  */
     val = ada_to_fixed_value (val);
 
-  val_print (value_type (val), value_contents_for_printing (val),
+  val_print (value_type (val), symbol,
+             value_contents_for_printing (val),
 	     value_embedded_offset (val), value_address (val),
 	     stream, recurse,
 	     val, options, language);
@@ -955,8 +959,8 @@ val_print_scalar_formatted (struct type *type,
       struct value_print_options opts = *options;
       opts.format = 0;
       opts.deref_ref = 0;
-      val_print (type, valaddr, embedded_offset, 0, stream, 0, val, &opts,
-		 current_language);
+      val_print (type, NULL, valaddr, embedded_offset, 0, stream, 0, val,
+                 &opts, current_language);
       return;
     }
 
@@ -1678,7 +1682,7 @@ val_print_array_elements (struct type *type,
 
       if (reps > options->repeat_count_threshold)
 	{
-	  val_print (elttype, valaddr, embedded_offset + i * eltlen,
+	  val_print (elttype, NULL, valaddr, embedded_offset + i * eltlen,
 		     address, stream, recurse + 1, val, options,
 		     current_language);
 	  annotate_elt_rep (reps);
@@ -1690,7 +1694,7 @@ val_print_array_elements (struct type *type,
 	}
       else
 	{
-	  val_print (elttype, valaddr, embedded_offset + i * eltlen,
+	  val_print (elttype, NULL, valaddr, embedded_offset + i * eltlen,
 		     address,
 		     stream, recurse + 1, val, options, current_language);
 	  annotate_elt ();

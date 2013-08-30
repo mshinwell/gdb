@@ -192,6 +192,7 @@ f77_print_array_1 (int nss, int ndimensions, struct type *type,
 	   i++, (*elts)++)
 	{
 	  val_print (TYPE_TARGET_TYPE (type),
+                     NULL,
 		     valaddr,
 		     embedded_offset + i * F77_DIM_OFFSET (ndimensions),
 		     address, stream, recurse,
@@ -380,7 +381,7 @@ f_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
         {
           int offset = TYPE_FIELD_BITPOS (type, index) / 8;
 
-          val_print (TYPE_FIELD_TYPE (type, index), valaddr,
+          val_print (TYPE_FIELD_TYPE (type, index), NULL, valaddr,
 		     embedded_offset + offset,
 		     address, stream, recurse + 1,
 		     original_value, options, current_language);
@@ -402,7 +403,7 @@ f_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
     case TYPE_CODE_BOOL:
     case TYPE_CODE_CHAR:
     default:
-      generic_val_print (type, valaddr, embedded_offset, address,
+      generic_val_print (type, NULL, valaddr, embedded_offset, address,
 			 stream, recurse, original_value, options,
 			 &f_decorations);
       break;

@@ -61,6 +61,7 @@ dynamic_array_type (struct type *type, const gdb_byte *valaddr,
       ival = value_at (true_type, addr);
 
       d_val_print (true_type,
+                   NULL,
 		   value_contents_for_printing (ival),
 		   value_embedded_offset (ival), addr,
 		   stream, recurse + 1, ival, options);
@@ -71,7 +72,8 @@ dynamic_array_type (struct type *type, const gdb_byte *valaddr,
 
 /* Implements the la_val_print routine for language D.  */
 void
-d_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
+d_val_print (struct type *type, struct symbol *symbol,
+             const gdb_byte *valaddr, int embedded_offset,
              CORE_ADDR address, struct ui_file *stream, int recurse,
 	     const struct value *val,
              const struct value_print_options *options)
@@ -87,7 +89,7 @@ d_val_print (struct type *type, const gdb_byte *valaddr, int embedded_offset,
 	if (ret == 0)
 	  break;
       default:
-	c_val_print (type, valaddr, embedded_offset, address, stream,
+	c_val_print (type, symbol, valaddr, embedded_offset, address, stream,
 		     recurse, val, options);
     }
 }

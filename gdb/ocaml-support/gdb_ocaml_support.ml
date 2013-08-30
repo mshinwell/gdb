@@ -1,7 +1,12 @@
 let _ = prerr_endline "Hello from ml world!"
 
-let rec val_print ~depth v out =
+let rec val_print ~depth v out ~symbol_linkage_name =
   if depth > 2 then Gdb.print out ".." else 
+  begin match symbol_linkage_name with
+    | None -> ()
+    | Some symbol_linkage_name ->
+      Gdb.printf out "%s=" symbol_linkage_name
+  end;
   if Gdb.Obj.is_int v
   then Gdb.printf out "%d" (Gdb.Obj.int v)
   else if Gdb.Obj.is_block v then
@@ -14,7 +19,7 @@ let rec val_print ~depth v out =
           if field > 0 then Gdb.print out ", ";
           try 
             let v' = Gdb.Obj.field v field in
-            val_print ~depth:(succ depth) v' out
+            val_print ~depth:(succ depth) v' out ~symbol_linkage_name:None
           with Gdb.Read_error _ ->
             Gdb.printf out "<field %d read failed>" field
         done;
@@ -26,5 +31,7 @@ let rec val_print ~depth v out =
   end
   else Gdb.printf out "<unaligned object>"
 
-let val_print addr stream = val_print ~depth:0 addr stream
+let val_print addr stream ~symbol_linkage_name =
+  val_print ~depth:0 addr stream ~symbol_linkage_name
+
 let () = Callback.register "gdb_ocaml_support_val_print" val_print

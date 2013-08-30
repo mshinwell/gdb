@@ -1,3 +1,22 @@
+/* Interface to the OCaml support library for GDB, the GNU debugger.
+
+   Contributed by Jane Street Europe.
+
+   This file is part of GDB.
+
+   This program is free software; you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation; either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+
 #include <stdio.h>
 #include <dlfcn.h>
 
@@ -65,7 +84,8 @@ ocaml_support_library (void)
 }
 
 int
-ocaml_support_val_print (struct type *type, const gdb_byte *valaddr,
+ocaml_support_val_print (struct type *type, struct symbol *symbol,
+                         const gdb_byte *valaddr,
                          int embedded_offset,
                          CORE_ADDR address, struct ui_file *stream,
                          int recurse, const struct value *val,
@@ -75,7 +95,7 @@ ocaml_support_val_print (struct type *type, const gdb_byte *valaddr,
   struct gdb_ocaml_support *stubs = ocaml_support_library ();
   if (stubs && stubs->val_print)
     {
-      stubs->val_print (type, valaddr, embedded_offset, address, stream,
+      stubs->val_print (type, symbol, valaddr, embedded_offset, address, stream,
                         recurse, val, options, depth);
       return 1;
     }

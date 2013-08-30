@@ -308,7 +308,7 @@ cp_print_value_fields (struct type *type, struct type *real_type,
 
 		  v = value_field_bitfield (type, i, valaddr, offset, val);
 
-		  common_val_print (v, stream, recurse + 1, &opts,
+		  common_val_print (v, NULL, stream, recurse + 1, &opts,
 				    current_language);
 		}
 	    }
@@ -361,6 +361,7 @@ cp_print_value_fields (struct type *type, struct type *real_type,
 
 		  opts.deref_ref = 0;
 		  val_print (TYPE_FIELD_TYPE (type, i),
+                             NULL,
 			     valaddr, 
 			     offset + TYPE_FIELD_BITPOS (type, i) / 8,
 			     address,
@@ -704,7 +705,7 @@ cp_print_static_field (struct type *type,
 
   opts = *options;
   opts.deref_ref = 0;
-  val_print (type, value_contents_for_printing (val), 
+  val_print (type, NULL, value_contents_for_printing (val), 
 	     value_embedded_offset (val),
 	     value_address (val),
 	     stream, recurse, val,

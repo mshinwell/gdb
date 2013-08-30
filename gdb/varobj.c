@@ -2963,7 +2963,7 @@ value_get_print_value (struct value *value, enum varobj_display_formats format,
     val_print_string (type, encoding, str_addr, len, stb, &opts);
   else
     /* All other cases.  */
-    common_val_print (value, stb, 0, &opts, current_language);
+    common_val_print (value, NULL, stb, 0, &opts, current_language);
 
   thevalue = ui_file_xstrdup (stb, NULL);
 

@@ -656,7 +656,7 @@ valpy_str (PyObject *self)
       struct ui_file *stb = mem_fileopen ();
       struct cleanup *old_chain = make_cleanup_ui_file_delete (stb);
 
-      common_val_print (((value_object *) self)->value, stb, 0,
+      common_val_print (((value_object *) self)->value, NULL, stb, 0,
 			&opts, python_language);
       s = ui_file_xstrdup (stb, NULL);
 

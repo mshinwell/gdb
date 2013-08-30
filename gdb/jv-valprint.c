@@ -196,7 +196,7 @@ java_value_print (struct value *val, struct ui_file *stream,
 
 	      opts = *options;
 	      opts.deref_ref = 1;
-	      common_val_print (v, stream, 1, &opts, current_language);
+	      common_val_print (v, NULL, stream, 1, &opts, current_language);
 
 	      things_printed++;
 	      i += reps;
@@ -255,7 +255,7 @@ java_value_print (struct value *val, struct ui_file *stream,
 
   opts = *options;
   opts.deref_ref = 1;
-  common_val_print (val, stream, 0, &opts, current_language);
+  common_val_print (val, NULL, stream, 0, &opts, current_language);
 }
 
 /* TYPE, VALADDR, ADDRESS, STREAM, RECURSE, and OPTIONS have the
@@ -405,7 +405,7 @@ java_print_value_fields (struct type *type, const gdb_byte *valaddr,
 
 		  opts = *options;
 		  opts.deref_ref = 0;
-		  common_val_print (v, stream, recurse + 1,
+		  common_val_print (v, NULL, stream, recurse + 1,
 				    &opts, current_language);
 		}
 	    }
@@ -430,7 +430,7 @@ java_print_value_fields (struct type *type, const gdb_byte *valaddr,
 			v = value_addr (v);
 		      opts = *options;
 		      opts.deref_ref = 0;
-		      common_val_print (v, stream, recurse + 1,
+		      common_val_print (v, NULL, stream, recurse + 1,
 					&opts, current_language);
 		    }
 		}
@@ -442,6 +442,7 @@ java_print_value_fields (struct type *type, const gdb_byte *valaddr,
 
 		  opts.deref_ref = 0;
 		  val_print (TYPE_FIELD_TYPE (type, i),
+                             NULL,
 			     valaddr,
 			     offset + TYPE_FIELD_BITPOS (type, i) / 8,
 			     address, stream, recurse + 1, val, &opts,
@@ -464,7 +465,8 @@ java_print_value_fields (struct type *type, const gdb_byte *valaddr,
    function; they are identical.  */
 
 void
-java_val_print (struct type *type, const gdb_byte *valaddr,
+java_val_print (struct type *type, struct symbol *symbol,
+                const gdb_byte *valaddr,
 		int embedded_offset, CORE_ADDR address,
 		struct ui_file *stream, int recurse,
 		const struct value *val,
@@ -536,7 +538,7 @@ java_val_print (struct type *type, const gdb_byte *valaddr,
       break;
 
     default:
-      c_val_print (type, valaddr, embedded_offset, address, stream,
+      c_val_print (type, NULL, valaddr, embedded_offset, address, stream,
 		   recurse, val, options);
       break;
     }

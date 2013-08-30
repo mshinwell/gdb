@@ -806,7 +806,7 @@ ada_varobj_get_value_image (struct value *value,
   buffer = mem_fileopen ();
   old_chain = make_cleanup_ui_file_delete (buffer);
 
-  common_val_print (value, buffer, 0, opts, current_language);
+  common_val_print (value, NULL, buffer, 0, opts, current_language);
   result = ui_file_xstrdup (buffer, NULL);
 
   do_cleanups (old_chain);

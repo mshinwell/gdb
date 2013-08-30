@@ -56,7 +56,8 @@ static const struct generic_val_print_decorations p_decorations =
    function; they are identical.  */
 
 void
-pascal_val_print (struct type *type, const gdb_byte *valaddr,
+pascal_val_print (struct type *type, struct symbol *symbol,
+                  const gdb_byte *valaddr,
 		  int embedded_offset, CORE_ADDR address,
 		  struct ui_file *stream, int recurse,
 		  const struct value *original_value,
@@ -260,7 +261,7 @@ pascal_val_print (struct type *type, const gdb_byte *valaddr,
 		  wtype = TYPE_TARGET_TYPE (type);
 		}
 	      vt_val = value_at (wtype, vt_address);
-	      common_val_print (vt_val, stream, recurse + 1, options,
+	      common_val_print (vt_val, NULL, stream, recurse + 1, options,
 				current_language);
 	      if (options->pretty)
 		{
@@ -284,7 +285,7 @@ pascal_val_print (struct type *type, const gdb_byte *valaddr,
     case TYPE_CODE_UNDEF:
     case TYPE_CODE_BOOL:
     case TYPE_CODE_CHAR:
-      generic_val_print (type, valaddr, embedded_offset, address,
+      generic_val_print (type, NULL, valaddr, embedded_offset, address,
 			 stream, recurse, original_value, options,
 			 &p_decorations);
       break;
@@ -446,7 +447,7 @@ pascal_value_print (struct value *val, struct ui_file *stream,
 	  fprintf_filtered (stream, ") ");
 	}
     }
-  common_val_print (val, stream, 0, &opts, current_language);
+  common_val_print (val, NULL, stream, 0, &opts, current_language);
 }
 
 
@@ -637,7 +638,7 @@ pascal_object_print_value_fields (struct type *type, const gdb_byte *valaddr,
 		  v = value_field_bitfield (type, i, valaddr, offset, val);
 
 		  opts.deref_ref = 0;
-		  common_val_print (v, stream, recurse + 1, &opts,
+		  common_val_print (v, NULL, stream, recurse + 1, &opts,
 				    current_language);
 		}
 	    }
@@ -670,7 +671,7 @@ pascal_object_print_value_fields (struct type *type, const gdb_byte *valaddr,
 		     valaddr + TYPE_FIELD_BITPOS (type, i) / 8,
 		     address + TYPE_FIELD_BITPOS (type, i) / 8, 0,
 		     stream, format, 0, recurse + 1, pretty); */
-		  val_print (TYPE_FIELD_TYPE (type, i),
+		  val_print (TYPE_FIELD_TYPE (type, i), NULL,
 			     valaddr, offset + TYPE_FIELD_BITPOS (type, i) / 8,
 			     address, stream, recurse + 1, val, &opts,
 			     current_language);
@@ -880,7 +881,7 @@ pascal_object_print_static_field (struct value *val,
 
   opts = *options;
   opts.deref_ref = 0;
-  common_val_print (val, stream, recurse, &opts, current_language);
+  common_val_print (val, NULL, stream, recurse, &opts, current_language);
 }
 
 /* -Wmissing-prototypes */

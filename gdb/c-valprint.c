@@ -131,7 +131,8 @@ static const struct generic_val_print_decorations c_decorations =
    function; they are identical.  */
 
 void
-c_val_print (struct type *type, const gdb_byte *valaddr,
+c_val_print (struct type *type, struct symbol *symbol,
+             const gdb_byte *valaddr,
 	     int embedded_offset, CORE_ADDR address,
 	     struct ui_file *stream, int recurse,
 	     const struct value *original_value,
@@ -351,7 +352,7 @@ c_val_print (struct type *type, const gdb_byte *valaddr,
 		      wtype = unresolved_elttype;
 		    }
 		  vt_val = value_at (wtype, vt_address);
-		  common_val_print (vt_val, stream, recurse + 1,
+		  common_val_print (vt_val, NULL, stream, recurse + 1,
 				    options, current_language);
 		  if (options->pretty)
 		    {
@@ -447,7 +448,7 @@ c_val_print (struct type *type, const gdb_byte *valaddr,
     case TYPE_CODE_COMPLEX:
     case TYPE_CODE_CHAR:
     default:
-      generic_val_print (type, valaddr, embedded_offset, address,
+      generic_val_print (type, NULL, valaddr, embedded_offset, address,
 			 stream, recurse, original_value, options,
 			 &c_decorations);
       break;
@@ -560,6 +561,7 @@ c_value_print (struct value *val, struct ui_file *stream,
 	  /* Print out object: enclosing type is same as real_type if
 	     full.  */
 	  val_print (value_enclosing_type (val),
+                     NULL,
 		     value_contents_for_printing (val), 0,
 		     value_address (val), stream, 0,
 		     val, &opts, current_language);
@@ -573,6 +575,7 @@ c_value_print (struct value *val, struct ui_file *stream,
 	  fprintf_filtered (stream, "(%s ?) ",
 			    TYPE_NAME (value_enclosing_type (val)));
 	  val_print (value_enclosing_type (val),
+                     NULL,
 		     value_contents_for_printing (val), 0,
 		     value_address (val), stream, 0,
 		     val, &opts, current_language);
@@ -581,7 +584,7 @@ c_value_print (struct value *val, struct ui_file *stream,
       /* Otherwise, we end up at the return outside this "if".  */
     }
 
-  val_print (val_type, value_contents_for_printing (val),
+  val_print (val_type, NULL, value_contents_for_printing (val),
 	     value_embedded_offset (val),
 	     value_address (val),
 	     stream, 0,

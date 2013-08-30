@@ -198,6 +198,9 @@ struct language_defn
        
        TYPE is the type of the sub-object to be printed.
 
+       SYMBOL is the symbol whose value is being printed, or NULL if
+       there is no such symbol.
+
        CONTENTS holds the bits of the value.  This holds the entire
        enclosing object.
 
@@ -216,6 +219,7 @@ struct language_defn
        printing.  */
 
     void (*la_val_print) (struct type *type,
+                          struct symbol *symbol,
 			  const gdb_byte *contents,
 			  int embedded_offset, CORE_ADDR address,
 			  struct ui_file *stream, int recurse,

@@ -317,21 +317,22 @@ ocaml_val_print_ocaml_value (struct type *type, const gdb_byte *valaddr,
 }
 
 static void
-ocaml_val_print (struct type *type, const gdb_byte *valaddr,
+ocaml_val_print (struct type *type, struct symbol *symbol,
+                 const gdb_byte *valaddr,
                  int embedded_offset,
                  CORE_ADDR address, struct ui_file *stream, int recurse,
                  const struct value *val,
                  const struct value_print_options *options)
 {
   if (is_ocaml_value_type (type)) {
-    if (ocaml_support_val_print (type, valaddr, embedded_offset,
+    if (ocaml_support_val_print (type, symbol, valaddr, embedded_offset,
                                  address, stream, recurse, val, options, 0));
     else
       ocaml_val_print_ocaml_value (type, valaddr, embedded_offset,
                                    address, stream, recurse, val, options, 0);
   }
   else {
-    c_val_print (type, valaddr, embedded_offset,
+    c_val_print (type, symbol, valaddr, embedded_offset,
                  address, stream, recurse, val, options);
   }
 }

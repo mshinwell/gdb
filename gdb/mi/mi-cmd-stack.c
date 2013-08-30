@@ -301,7 +301,7 @@ list_arg_or_local (const struct frame_arg *arg, enum what_to_list what,
 
 	      get_raw_print_options (&opts);
 	      opts.deref_ref = 1;
-	      common_val_print (arg->val, stb, 0, &opts,
+	      common_val_print (arg->val, arg->sym, stb, 0, &opts,
 				language_def (SYMBOL_LANGUAGE (arg->sym)));
 	    }
 	}

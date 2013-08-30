@@ -1170,7 +1170,7 @@ get_register (struct frame_info *frame, int regnum, int format)
 
       get_formatted_print_options (&opts, format);
       opts.deref_ref = 1;
-      val_print (value_type (val),
+      val_print (value_type (val), NULL,
 		 value_contents_for_printing (val),
 		 value_embedded_offset (val), 0,
 		 stb, 0, val, &opts, current_language);
@@ -1266,7 +1266,7 @@ mi_cmd_data_evaluate_expression (char *command, char **argv, int argc)
   /* Print the result of the expression evaluation.  */
   get_user_print_options (&opts);
   opts.deref_ref = 0;
-  common_val_print (val, stb, 0, &opts, current_language);
+  common_val_print (val, NULL, stb, 0, &opts, current_language);
 
   ui_out_field_stream (uiout, "value", stb);
 
