@@ -136,21 +136,26 @@ end = struct
 
   let load ~filename =
     let cmi_infos, cmt_infos =
-      (* CR mshinwell: find out what the failure behaviour of [read] is *)
-      Printf.printf "reading cmt file '%s'\n%!" filename;
-      Cmt_format.read filename
+      try
+        Cmt_format.read filename
+      with Sys_error _ ->
+        None, None
     in
     let idents_to_types =
       match cmt_infos with
       | None -> []
       | Some cmt_infos -> create_idents_to_types_map ~cmt_infos
     in
+    List.iter idents_to_types
+      ~f:(fun (ident, _type) ->
+            Printf.printf "idents_to_types: '%s'\n" ident);
     { cmi_infos;
       cmt_infos;
       idents_to_types;
     }
 
   let type_of_ident t ~unique_name =
+    Printf.printf "trying to find '%s'\n%!" unique_name;
     try Some (List.assoc unique_name t.idents_to_types) with Not_found -> None
 end
 
@@ -161,7 +166,20 @@ let rec val_print ~depth v out ~symbol_linkage_name ~cmt_file =
   begin match symbol_linkage_name with
     | None -> ()
     | Some symbol_linkage_name ->
-      Gdb.printf out "%s=" symbol_linkage_name
+      Gdb.printf out "%s=" symbol_linkage_name;
+      match Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name with
+      | None -> Printf.printf "'%s' not found in cmt\n" symbol_linkage_name
+      | Some type_expr ->
+        let formatter = Format.std_formatter in
+        Printtyp.type_expr formatter type_expr;
+        Format.print_flush ()
+
+(*
+        match type_expr.Types.desc with
+        | Tconstr (path, _args, _abbrev_memo_ref) ->
+          Printf.printf "constructor: %s\n" (Path.name path)
+        | 
+*)
   end;
   if Gdb.Obj.is_int v
   then Gdb.printf out "%d" (Gdb.Obj.int v)

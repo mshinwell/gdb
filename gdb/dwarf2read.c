@@ -7366,7 +7366,9 @@ dwarf2_compute_name (const char *name,
   /* For Fortran GDB prefers DW_AT_*linkage_name if present but otherwise
      compute it by typename_concat inside GDB.  */
   if (cu->language == language_ada
-      || (cu->language == language_fortran && physname))
+      || (cu->language == language_fortran && physname)
+      /* We need access to the stamped (linkage) names in gdb. */
+      || cu->language == language_ocaml)
     {
       /* For Ada unit, we prefer the linkage name over the name, as
 	 the former contains the exported name, which the user expects

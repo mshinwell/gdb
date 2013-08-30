@@ -60,6 +60,8 @@ ocaml_val_print (value callback,
   /* Extract the linkage name (equivalent of [Ident.unique_name]) from the
      symbol that we're being asked to print, if such a symbol exists. */
   if (symbol) {
+    printf("linkage name '%s', natural name '%s'\n",
+      SYMBOL_LINKAGE_NAME(symbol), SYMBOL_NATURAL_NAME(symbol));
     symbol_linkage_name = SYMBOL_LINKAGE_NAME(symbol);
     if (symbol_linkage_name) {
       v_symbol = caml_copy_string(symbol_linkage_name);
