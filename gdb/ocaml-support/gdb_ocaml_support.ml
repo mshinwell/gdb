@@ -312,17 +312,9 @@ let val_print addr stream ~symbol_linkage_name ~source_file_path =
     | None -> Cmt_file.create_null ()
     | Some source_file_path ->
       if String.length source_file_path > 3
-        && String.get source_file_path
-             (String.length source_file_path - 1) = 'l'
-        && String.get source_file_path
-             (String.length source_file_path - 2) = 'm'
-        && String.get source_file_path
-             (String.length source_file_path - 3) = '.'
+        && Filename.check_suffix source_file_path ".ml"
       then
-        let filename =
-          (String.sub source_file_path 0 (String.length source_file_path - 3))
-            ^ ".cmt"
-        in
+        let filename = Filename.chop_extension source_file_path ^ ".cmt" in
         Cmt_file.load ~filename
       else
         Cmt_file.create_null ()
