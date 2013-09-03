@@ -8,7 +8,9 @@ module Cmt_file : sig
   val create_null : unit -> t
   val load : filename:string -> t
 
-  val type_of_ident : t -> unique_name:string -> Types.type_expr option
+  val type_of_ident : t
+    -> unique_name:string
+    -> (Types.type_expr * Env.t) option
 end = struct
   type t = {
     cmi_infos : Cmi_format.cmi_infos option;
@@ -16,7 +18,7 @@ end = struct
     (* CR mshinwell: once we have [Core_kernel], switch to a table. *)
     (* CR mshinwell: we can almost certainly do better than a map from
        every identifier (at least in common cases). *)
-    idents_to_types : (string * Types.type_expr) list;
+    idents_to_types : (string * (Types.type_expr * Env.t)) list;
   }
 
   let create_null () =
@@ -31,12 +33,13 @@ end = struct
     let rec process_pattern ~pat ~idents_to_types =
       match pat.Typedtree.pat_desc with
       | Typedtree.Tpat_var (ident, _loc) ->
-        (Ident.unique_name ident, pat.Typedtree.pat_type)::idents_to_types
+        (Ident.unique_name ident, (pat.Typedtree.pat_type,
+         pat.Typedtree.pat_env))::idents_to_types
       | Typedtree.Tpat_alias (pat, ident, _loc) ->
         process_pattern ~pat
           ~idents_to_types:
             ((Ident.unique_name ident,
-             pat.Typedtree.pat_type)::idents_to_types)
+             (pat.Typedtree.pat_type, pat.Typedtree.pat_env))::idents_to_types)
       | Typedtree.Tpat_tuple pats
       | Typedtree.Tpat_construct (_, _, pats, _)
       | Typedtree.Tpat_array pats ->
@@ -168,6 +171,19 @@ end
 let _ = prerr_endline "Hello from ml world!"
 *)
 
+let extract_constant_ctors ~cases =
+  let constant_ctors, _ =
+    List.fold_left cases
+      ~init:([], 0)
+      ~f:(fun (constant_ctors, next_ctor_number) (ident, args, _return_type) ->
+            match args with
+            | [] ->
+              (Int64.of_int next_ctor_number, ident)::constant_ctors, next_ctor_number + 1
+            | _ ->
+              constant_ctors, next_ctor_number)
+  in
+  constant_ctors
+
 let val_print_int ~value ~gdb_stream ~symbol_linkage_name ~cmt_file =
   let default () =
     let value = Gdb.Obj.int value in
@@ -182,13 +198,32 @@ let val_print_int ~value ~gdb_stream ~symbol_linkage_name ~cmt_file =
     | None ->
       default ();
       Gdb.printf gdb_stream " [*]"
-    | Some type_expr ->
+    | Some (type_expr, env) ->
       let rec print_type_expr type_expr =
-        (* CR mshinwell: note---only for debugging *)
         match type_expr.Types.desc with
         | Types.Tconstr (path, [], _abbrev_memo_ref) ->
-          Gdb.printf gdb_stream "!! %s" (Path.name path)
-          (* CR mshinwell: ... and now we need the type definition again. sigh *)
+          begin try
+            let type_decl = Env.find_type path env in
+            match type_decl.Types.type_kind with
+            | Types.Type_variant cases ->
+              let constant_ctors = extract_constant_ctors ~cases in
+              if Int64.compare value Int64.zero >= 0
+                 && Int64.compare value (Int64.of_int (List.length constant_ctors)) < 0
+              then
+                let ident = List.assoc value constant_ctors in
+                Gdb.printf gdb_stream "%s" (Ident.name ident)
+              else
+                default ()
+            | Types.Type_abstract
+            | Types.Type_record _ ->
+              (* Neither of these are expected. *)
+              default ()
+          with Not_found ->
+            begin
+              Gdb.printf gdb_stream "<unk type %s>=" (Path.name path);
+              default ()
+            end
+          end
         | Types.Tvariant row_desc ->
           Gdb.printf gdb_stream "Tvariant"
         | Types.Tvar _ ->
@@ -251,7 +286,7 @@ let rec val_print ~depth v out ~symbol_linkage_name ~cmt_file =
       match Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name with
       | None -> ()
         (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
-      | Some type_expr ->
+      | Some (type_expr, _env) ->
         Gdb.print out " : ";
         let formatter =
           Format.make_formatter

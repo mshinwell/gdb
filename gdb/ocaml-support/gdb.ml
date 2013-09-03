@@ -118,7 +118,7 @@ module Target_obj = struct
   let add_offset t i = Value.(add t (of_int32 i))
 
   let int x = Value.(to_int (shift_right x 1))
-  let string x =
+  let string x = (* CR mshinwell: need more descriptive names *)
     let size = size x * Target.arch_wo_size in
     let buf = String.create size in
     Target.read_memory_exn x buf size;
