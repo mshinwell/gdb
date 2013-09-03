@@ -348,7 +348,6 @@ let rec val_print ~depth v out ~type_of_ident =
               in
               match identify_value type_expr with
               | `Record (field_decls, record_repr) ->
-                Printf.printf "** record\n%!";
                 let field_decls = Array.of_list field_decls in
                 if Array.length field_decls <> Gdb.Obj.size v then begin
                   (* The record declaration doesn't appear to match the value; just
