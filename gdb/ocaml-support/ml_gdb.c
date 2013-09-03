@@ -11,19 +11,6 @@ value ml_gdb_target_read_memory (value core_addr, value buf, value len)
   CAMLreturn (Val_int (result));
 }
 
-value ml_gdb_target_read_field (value core_addr, value offset)
-{
-  CAMLparam2(core_addr, offset);
-  CORE_ADDR addr = Target_val (core_addr);
-
-  CORE_ADDR field;
-  gdb_byte *ptr = (gdb_byte*) &field;
-  int result = target_read_memory (addr + Int_val (offset) * TARGET_SIZE,
-                                   ptr,
-                                   TARGET_SIZE);
-  CAMLreturn (result == 0 ? Val_target (field) : Val_int (result));
-}
-
 value ml_gdb_copy_int32 (value buf)
 {
   CAMLparam1(buf);
@@ -60,3 +47,51 @@ value ml_gdb_print_filtered (value stream, value buf)
 
   CAMLreturn (Val_unit);
 }
+
+value ml_gdb_find_pc_line (value core_addr, value not_current)
+{
+  CAMLparam2 (core_addr, not_current);
+  CAMLlocal1 (result);
+  CAMLlocal5 (v_sal, v_symtab, v_line, v_addr_pc, v_addr_end);
+
+  CORE_ADDR addr = Target_val (core_addr);
+  int notcurrent = Int_val (not_current);
+
+  struct symtab_and_line sal;
+  sal = find_pc_line (addr, notcurrent);
+  
+  if (!sal.symtab)
+    CAMLreturn (/*None*/Val_unit);
+
+  v_symtab   = Val_ptr (sal.symtab);
+  v_addr_pc  = Val_ptr (sal.pc);
+  v_addr_end = Val_ptr (sal.end);
+
+  if (sal.line != 0)
+  {
+    v_line = caml_alloc (1,0);
+    Store_field (v_line, 0, sal.line);
+  }
+  else
+    v_line = Val_unit;
+
+  v_sal = caml_alloc (4,0);
+  Store_field (v_sal, 0, v_symtab);
+  Store_field (v_sal, 1, v_line);
+  Store_field (v_sal, 2, v_addr_pc);
+  Store_field (v_sal, 3, v_addr_end);
+
+  result = caml_alloc (1,0);
+  Store_field (result, 0, v_sal);
+
+  CAMLreturn (result);
+}
+
+value ml_gdb_symtab_filename (value v_symtab)
+{
+  CAMLparam1 (v_symtab);
+  
+  struct symtab* symtab = Ptr_val (v_symtab);
+  CAMLreturn (caml_copy_string (symtab->filename));
+}
+
