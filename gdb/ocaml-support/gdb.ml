@@ -48,6 +48,7 @@ module Priv = struct
 end
 
 let print = Priv.gdb_print_filtered
+let print_endline out = print out "\n"
 let printf stream = Printf.ksprintf (print stream)
 
 exception Read_error of int

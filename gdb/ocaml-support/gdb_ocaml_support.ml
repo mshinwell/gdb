@@ -197,6 +197,22 @@ end
 let _ = prerr_endline "Hello from ml world!"
 *)
 
+let extract_non_constant_ctors ~cases =
+  let non_constant_ctors, _ =
+    List.fold_left cases
+      ~init:([], 0)
+      ~f:(fun (non_constant_ctors, next_ctor_number) (ident, args, _return_type) ->
+            match args with
+            | [] ->
+              non_constant_ctors, next_ctor_number
+            | _ ->
+              (* CR mshinwell: check [return_type] is just that, and use it.  Presumably
+                 for GADTs. *)
+              (next_ctor_number, (ident, args))::non_constant_ctors,
+                next_ctor_number + 1)
+  in
+  non_constant_ctors
+
 let extract_constant_ctors ~cases =
   let constant_ctors, _ =
     List.fold_left cases
@@ -296,7 +312,7 @@ let val_print_int ~value ~gdb_stream ~type_of_ident =
     in
     print_type_expr type_expr
 
-let rec val_print ~depth v out ~type_of_ident =
+let rec val_print ~depth v out ~type_of_ident = (* CR mshinwell: rename [type_of_ident] *)
   if depth > 2 then Gdb.print out ".." else begin
     if Gdb.Obj.is_int v
     then val_print_int ~gdb_stream:out ~type_of_ident ~value:v
@@ -305,14 +321,22 @@ let rec val_print ~depth v out ~type_of_ident =
       begin match Gdb.Obj.tag v with
         | tag when tag < Gdb.Obj.closure_tag  ->
           begin
-            let default () =
-              if tag > 0 then Gdb.printf out "tag %d:" tag;
+            let default ?prefix_with ?type_of_field () =
+              begin match prefix_with with
+              | None -> if tag > 0 then Gdb.printf out "tag %d:" tag
+              | Some prefix_with -> Gdb.printf out "%s " prefix_with
+              end;
               Gdb.print out "(";
               for field = 0 to Gdb.Obj.size v - 1 do
                 if field > 0 then Gdb.print out ", ";
                 try 
                   let v' = Gdb.Obj.field v field in
-                  val_print ~depth:(succ depth) v' out ~type_of_ident
+                  let type_of_field =
+                    match type_of_field with
+                    | None -> None
+                    | Some type_of_field -> Some (type_of_field ~field_number:field)
+                  in
+                  val_print ~depth:(succ depth) v' out ~type_of_ident:type_of_field
                 with Gdb.Read_error _ ->
                   Gdb.printf out "<field %d read failed>" field
               done;
@@ -328,13 +352,13 @@ let rec val_print ~depth v out ~type_of_ident =
                   | None -> `Type_decl_not_found
                   | Some type_decl ->
                     match type_decl.Types.type_kind with
-                    | Types.Type_variant _ -> `Constructed_value
+                    | Types.Type_variant cases -> `Constructed_value cases
                     | Types.Type_abstract -> `Something_else
                     | Types.Type_record (field_decls, record_repr) ->
                       `Record (field_decls, record_repr)
                   end
                 | Types.Tlink type_expr -> identify_value type_expr
-                | Types.Ttuple _ -> `Tuple
+                | Types.Ttuple component_types -> `Tuple component_types
                 | Types.Tvariant _
                 | Types.Tvar _
                 | Types.Tarrow _
@@ -356,21 +380,50 @@ let rec val_print ~depth v out ~type_of_ident =
                   default ()
                 end else begin
                   Gdb.print out "{ ";
-                  for field = 0 to Gdb.Obj.size v - 1 do
-                    if field > 0 then Gdb.print out ", ";
+                  let num_fields = Gdb.Obj.size v in
+                  if num_fields > 1 then Gdb.print_endline out;
+                  (* CR mshinwell: adapt [default] for this *)
+                  for field = 0 to num_fields - 1 do
+                    if field > 0 then begin
+                      Gdb.print out ",";
+                      Gdb.print_endline out;
+                    end;
                     try 
                       let v' = Gdb.Obj.field v field in
                       let (field_name, _mutable, field_type) = field_decls.(field) in
+                      if num_fields > 1 then Gdb.print out "    ";
                       Gdb.printf out "%s = " (Ident.name field_name);
                       val_print ~depth:(succ depth) v' out
                         ~type_of_ident:(Some (field_type, env))
                     with Gdb.Read_error _ ->
                       Gdb.printf out "<field %d read failed>" field
                   done;
-                  Gdb.print out " }"
+                  if num_fields > 1 then Gdb.print_endline out;
+                  Gdb.print out "  }"
                 end
-              | `Constructed_value  (* CR mshinwell: can do much better for this one *)
-              | `Tuple
+              | `Constructed_value cases ->
+                let non_constant_ctors = extract_non_constant_ctors cases in
+                let ctor_info =
+                  try Some (List.assoc tag non_constant_ctors) with Not_found -> None
+                in
+                begin match ctor_info with
+                | None -> default ()
+                | Some (ctor_ident, arg_types) ->
+                  let arg_types = Array.of_list arg_types in
+                  let type_of_field ~field_number =
+                    assert (field_number >= 0 && field_number < Array.length arg_types);
+                    arg_types.(field_number), env
+                  in
+                  default () ~prefix_with:(Ident.name ctor_ident) ~type_of_field
+                end
+              | `Tuple component_types ->
+                let component_types = Array.of_list component_types in
+                  let type_of_field ~field_number =
+                    assert (field_number >= 0
+                        && field_number < Array.length component_types);
+                    component_types.(field_number), env
+                  in
+                  default () ~type_of_field
               | `Something_else ->
                 default ()
               | `Type_decl_not_found ->
@@ -422,6 +475,15 @@ let rec val_print ~depth v out ~type_of_ident =
     | None -> ()
       (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
     | Some (type_expr, _env) ->
+      Gdb.print out " : ";
+      let formatter =
+        Format.make_formatter
+          (fun str pos len -> Gdb.print out (String.sub str pos len))
+          (fun () -> ())
+      in
+      Printtyp.type_expr formatter type_expr;
+      Format.pp_print_flush formatter ()
+(*
       let rec print_type_expr type_expr =
         match type_expr.Types.desc with
         | Types.Tconstr (path, [], _abbrev_memo_ref) ->
@@ -442,17 +504,6 @@ let rec val_print ~depth v out ~type_of_ident =
         | Types.Tpackage _ -> ()
       in
       print_type_expr type_expr
-
-        (* CR mshinwell: work out how to use [Printtyp.type_expr].  The below doesn't
-           print anything. *)
-(*
-        let formatter =
-          Format.make_formatter
-            (fun str pos len -> Gdb.print out (String.sub str pos len))
-            (fun () -> ())
-        in
-        Printtyp.type_expr formatter type_expr;
-        Format.print_flush ()
 *)
   end
 
