@@ -1,6 +1,17 @@
 (* CR mshinwell: transition to using [Core_kernel] *)
 
 module List = ListLabels
+module String = struct
+  include StringLabels
+
+  let is_sub str ~sub ~pos =
+    if length sub + pos > length str then invalid_arg "String.is_sub" ;
+    let rec loop i =
+      if i < 0 then true else
+      sub.[i] = str.[pos + i] && loop (i - 1)
+    in loop (length sub - 1)
+
+end
 
 module Cmt_file : sig
   type t
@@ -18,6 +29,9 @@ end = struct
     (* CR mshinwell: once we have [Core_kernel], switch to a table. *)
     (* CR mshinwell: we can almost certainly do better than a map from
        every identifier (at least in common cases). *)
+    (* CR trefis for mshinwell: in ocp-index, they use a trie from names to
+       locations, you might want to do the same (but for types instead of
+       positions, ofc) here. *)
     idents_to_types : (string * (Types.type_expr * Env.t)) list;
   }
 
@@ -541,5 +555,36 @@ let val_print addr stream ~symbol_linkage_name ~source_file_path =
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
 
 
-let demangle name options = "TODO"
+let demangle mangled_name =
+  let demangle mangled =
+    let str = String.copy mangled in
+    let rec loop i j =
+      if j >= String.length str then
+        i
+      else if str.[j] = '_' && j + 1 < String.length str && str.[j + 1] = '_' then (
+        (* So, here is the funny part: there's no way to distinguish between "__" inserted
+           by [Compilenv.make_symbol] (see asmcomp/compilenv.ml) and names containing
+           "__".
+           We are just going to assume that people never use "__" in their name (although
+           we know for a fact that this happens in Core.) *)
+        str.[i] <- '.' ;
+        loop (i + 1) (j + 2)
+      ) else (
+        str.[i] <- str.[j] ;
+        loop (i + 1) (j + 1)
+      )
+    in
+    let len = loop 0 0 in
+    String.sub str ~pos:0 ~len
+  in
+  let is_caml_name =
+    String.length mangled_name > 4 &&
+    String.is_sub mangled_name ~sub:"caml" ~pos:0 &&
+    (* Beware: really naive *)
+    mangled_name.[4] <> '_' &&
+    mangled_name.[4] = (Char.uppercase mangled_name.[4])
+  in
+  if not is_caml_name then mangled_name else
+  demangle (String.sub mangled_name ~pos:4 ~len:(String.length mangled_name - 4))
+
 let () = Callback.register "gdb_ocaml_support_demangle" val_print
