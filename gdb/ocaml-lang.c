@@ -63,7 +63,7 @@ is_all_digits_after(char* chr)
 }
 
 char*
-ocaml_demangle(const char* mangled, int options)
+ocaml_demangle_cversion(const char* mangled, int options)
 {
   char* demangled;
   int index;
@@ -119,6 +119,17 @@ ocaml_demangle(const char* mangled, int options)
   }
 
   return demangled;
+}
+
+char*
+ocaml_demangle (const char* mangled, int options)
+{
+  char* unmangled = ocaml_support_demangle (mangled, options);
+
+  if (unmangled)
+      return unmangled;
+  else
+      return ocaml_demangle_cversion(mangled, options);
 }
 
 typedef unsigned long long value;

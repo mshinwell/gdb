@@ -16,7 +16,7 @@ struct gdb_ocaml_support {
                      int recurse, const struct value *val,
                      const struct value_print_options *options,
                      int depth);
-  void (*demangle) (const char *name,
+  char* (*demangle) (const char *name,
                     int options);
 };
 
@@ -29,5 +29,7 @@ int ocaml_support_val_print (struct type *type, struct symbol *symbol,
                              int recurse, const struct value *val,
                              const struct value_print_options *options,
                              int depth);
+
+char* ocaml_support_demangle (const char* mangled, int options);
 
 #endif /*!OCAML_SUPPORT_H*/

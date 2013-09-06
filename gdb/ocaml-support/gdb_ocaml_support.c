@@ -29,6 +29,8 @@
 #include "ml_utils.h"
 #include "../symtab.h"
 
+#include <string.h>
+
 int
 gdb_ocaml_support_init (void)
 {
@@ -132,4 +134,26 @@ gdb_ocaml_support_val_print (struct type *type, struct symbol *symbol,
     ocaml_val_print (*callback, type, symbol, valaddr, embedded_offset,
                      address, stream, recurse, val, options, depth);
   }
+}
+
+char*
+gdb_ocaml_support_demangle (char* mangled, int options)
+{
+    CAMLparam0();
+    CAMLlocal2 (caml_res, caml_mangled);
+
+    char* res = NULL;
+
+    static value *bite = NULL;
+    if (bite == NULL) {
+        bite = caml_named_value ("gdb_ocaml_support_demangle");
+    }
+
+    if (bite != NULL) {
+        caml_mangled = caml_copy_string (mangled);
+        caml_res = caml_callback (*bite, caml_mangled);
+        res = strdup (String_val(caml_res));
+    }
+
+    CAMLreturnT (char*, res);
 }
