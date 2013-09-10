@@ -565,19 +565,46 @@ let val_print ~depth v out ~symbol_linkage_name ~cmt_file =
   in
   val_print ~depth v out ~type_of_ident ~don't_print_type:false
 
-let val_print addr stream ~symbol_linkage_name ~source_file_path =
-  let cmt_file =
-    match source_file_path with
-    | None -> Cmt_file.create_null ()
-    | Some source_file_path ->
-      if String.length source_file_path > 3
-        && Filename.check_suffix source_file_path ".ml"
-      then
-        let filename = Filename.chop_extension source_file_path ^ ".cmt" in
-        Cmt_file.load ~filename
-      else
-        Cmt_file.create_null ()
-  in
+let decode_dwarf_type dwarf_type =
+  (* CR mshinwell: use [Core_kernel] and rewrite with sensible string
+     functions *)
+  let magic = "__ocaml" in
+  if String.length dwarf_type <= String.length magic then
+    None, None
+  else
+    let delimiter =
+      try Some (String.rindex dwarf_type ' ') with Not_found -> None
+    in
+    match delimiter with
+    | None -> None, None
+    | Some delimiter when delimiter <= String.length magic -> None, None
+    | Some delimiter ->
+      let source_file_path =
+        String.sub dwarf_type (String.length magic)
+          (delimiter - (String.length magic))
+      in
+      let symbol_linkage_name =
+        String.sub dwarf_type (delimiter + 1)
+          ((String.length dwarf_type) - (delimiter + 1))
+      in
+      Some source_file_path, Some symbol_linkage_name
+
+let cmt_file_of_source_file_path ~source_file_path =
+  (* CR mshinwell: This desperately needs to cache the result. *)
+  match source_file_path with
+  | None -> Cmt_file.create_null ()
+  | Some source_file_path ->
+    if String.length source_file_path > 3
+      && Filename.check_suffix source_file_path ".ml"
+    then
+      let filename = Filename.chop_extension source_file_path ^ ".cmt" in
+      Cmt_file.load ~filename
+    else
+      Cmt_file.create_null ()
+
+let val_print addr stream ~dwarf_type =
+  let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
+  let cmt_file = cmt_file_of_source_file_path ~source_file_path in
   val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file
 
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
@@ -600,6 +627,7 @@ let demangle mangled =
             "__".
             We are just going to assume that people never use "__" in their name (although
             we know for a fact that this happens in Core.) *)
+        (* CR mshinwell: fix the above *)
         str.[i] <- '.' ;
         loop (i + 1) (j + 2)
       ) else (
@@ -629,3 +657,32 @@ let demangle mangled_name =
     unstamped
 
 let () = Callback.register "gdb_ocaml_support_demangle" demangle
+
+let print_type ~dwarf_type ~out =
+  let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
+  (* CR mshinwell: we can share some of this code with above. *)
+  let status =
+    match symbol_linkage_name with
+    | None -> `Unknown
+    | Some symbol_linkage_name ->
+      let cmt_file = cmt_file_of_source_file_path ~source_file_path in
+      let type_of_ident =
+        Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name
+      in
+      match type_of_ident with
+      | None -> `Unknown
+        (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
+      | Some (type_expr, _env) -> `Ok type_expr
+  in
+  match status with
+  | `Unknown -> Gdb.print out "<unknown>"
+  | `Ok type_expr ->
+    let formatter =
+      Format.make_formatter
+        (fun str pos len -> Gdb.print out (String.sub str pos len))
+        (fun () -> ())
+    in
+    Printtyp.type_expr formatter type_expr;
+    Format.pp_print_flush formatter ()
+
+let () = Callback.register "gdb_ocaml_support_print_type" print_type

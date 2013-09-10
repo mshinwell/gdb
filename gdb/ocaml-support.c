@@ -61,6 +61,7 @@ ocaml_support_init (struct gdb_ocaml_support *stubs)
 
   SET_STUB (stubs, handle, val_print);
   SET_STUB (stubs, handle, demangle);
+  SET_STUB (stubs, handle, print_type);
 
   return handle;
 }
@@ -112,4 +113,14 @@ ocaml_support_demangle(const char* mangled, int options)
       return (stubs->demangle (mangled, options));
     }
   return NULL;
+}
+
+void
+ocaml_support_print_type (struct type *type, struct ui_file *stream)
+{
+  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  if (stubs && stubs->print_type)
+    {
+      return (stubs->print_type (type, stream));
+    }
 }

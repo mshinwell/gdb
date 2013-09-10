@@ -52,12 +52,8 @@ ocaml_val_print (value callback,
                  int depth)
 {
   CAMLparam0();
-  CAMLlocal4(v_symbol, v_symbol_option, v_source_path, v_type);
-  value v_source_path_option;
+  CAMLlocal1(v_type);
   CAMLlocalN(args, 3);
-  const char* source_path;
-  const char* symbol_linkage_name;
-  struct symtab* symtab;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
 
 #if 0
@@ -106,33 +102,14 @@ ocaml_val_print (value callback,
 #endif
 
   gdb_assert(type != NULL && TYPE_NAME(type) != NULL);  /* enforced in ocaml-lang.c */
-  symbol_linkage_name = strrchr(TYPE_NAME(type), ' ');
-  if (!symbol_linkage_name) {
-    /* CR mshinwell: should this emit a warning? */
-    v_symbol_option = Val_long(0);  /* None */
-    v_source_path_option = Val_long(0);  /* None */
-  }
-  else {
-    /* CR mshinwell: consider doing this in the OCaml code */
-    source_path = &(TYPE_NAME(type))[7];  /* skip "__ocaml" */
-    v_source_path = caml_alloc_string(symbol_linkage_name - source_path);
-    strncpy(String_val(v_source_path), source_path,
-            symbol_linkage_name - source_path);
-
-    v_symbol = caml_copy_string(++symbol_linkage_name);
-    v_symbol_option = caml_alloc_small(1, 0 /* Some */);
-    Field(v_symbol_option, 0) = v_symbol;
-
-    v_source_path_option = caml_alloc_small(1, 0 /* Some */);
-    Field(v_source_path_option, 0) = v_source_path;
-  }
+  v_type = caml_copy_string(TYPE_NAME(type));
 
   /* The printing code itself is written in OCaml. */
   args[0] = Val_target (*(CORE_ADDR*)valaddr);
+  /* CR mshinwell: make it more explicit that [Val_ptr] allocates */
   args[1] = Val_ptr (stream);
-  args[2] = v_symbol_option;
-  args[3] = v_source_path_option;
-  (void) caml_callbackN (callback, 4, args);
+  args[2] = v_type;
+  (void) caml_callbackN (callback, 3, args);
 
   CAMLreturn0;
 }
@@ -161,21 +138,49 @@ gdb_ocaml_support_val_print (struct type *type, struct symbol *symbol,
 char*
 gdb_ocaml_support_demangle (char* mangled, int options)
 {
-    CAMLparam0();
-    CAMLlocal2 (caml_res, caml_mangled);
+  static value *cb = NULL;
+  CAMLparam0();
+  CAMLlocal2 (caml_res, caml_mangled);
 
-    char* res = NULL;
+  char* res = NULL;
 
-    static value *bite = NULL;
-    if (bite == NULL) {
-        bite = caml_named_value ("gdb_ocaml_support_demangle");
-    }
+  if (cb == NULL) {
+    cb = caml_named_value ("gdb_ocaml_support_demangle");
+  }
 
-    if (bite != NULL) {
-        caml_mangled = caml_copy_string (mangled);
-        caml_res = caml_callback (*bite, caml_mangled);
-        res = strdup (String_val(caml_res));
-    }
+  if (cb != NULL) {
+    caml_mangled = caml_copy_string (mangled);
+    /* CR mshinwell: establish why renaming [cb] to [callback] produces the
+       following:
+         error: called object ‘caml_callback’ is not a function
+    */
+    caml_res = caml_callback (*cb, caml_mangled);
+    res = strdup (String_val(caml_res));
+  }
 
-    CAMLreturnT (char*, res);
+  /* CR mshinwell: is returning [NULL] acceptable?  (We might...) */
+  CAMLreturnT (char*, res);
+}
+
+void
+gdb_ocaml_support_print_type(struct type* type, struct ui_file* stream)
+{
+  CAMLparam0();
+  CAMLlocal1(v_type);
+  CAMLlocalN(args, 3);
+  static value *callback = NULL;
+
+  gdb_assert(type != NULL && TYPE_NAME(type) != NULL);  /* enforced in ocaml-lang.c */
+
+  if (callback == NULL) {
+    callback = caml_named_value ("gdb_ocaml_support_print_type");
+  }
+
+  v_type = caml_copy_string(TYPE_NAME(type));
+
+  args[0] = v_type;
+  args[1] = Val_ptr(stream);
+  (void) caml_callbackN(*callback, 2, args);
+
+  CAMLreturn0;
 }

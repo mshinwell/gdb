@@ -329,6 +329,18 @@ ocaml_val_print_ocaml_value (struct type *type, const gdb_byte *valaddr,
 }
 
 static void
+ocaml_print_type (struct type *type, const char *varstring, struct ui_file *stream,
+                  int show, int level, const struct type_print_options *flags)
+{
+  if (is_ocaml_type (type)) {
+    ocaml_support_print_type(type, stream);
+  }
+  else {
+    c_print_type(type, varstring, stream, show, level, flags);
+  }
+}
+
+static void
 ocaml_val_print (struct type *type, struct symbol *symbol,
                  const gdb_byte *valaddr,
                  int embedded_offset,
@@ -397,7 +409,7 @@ const struct language_defn ocaml_language_defn =
   c_printchar,			/* Print a character constant */
   c_printstr,			/* Function to print string constant */
   c_emit_char,			/* Print a single char */
-  c_print_type,			/* Print a type using appropriate syntax */
+  ocaml_print_type,		/* Print a type using appropriate syntax */
   c_print_typedef,		/* Print a typedef using appropriate syntax */
   ocaml_val_print,		/* Print a value using appropriate syntax */
   c_value_print,		/* Print a top-level value */
