@@ -102,3 +102,14 @@ ocaml_support_val_print (struct type *type, struct symbol *symbol,
     }
   return 0;
 }
+
+char*
+ocaml_support_demangle(const char* mangled, int options)
+{
+  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  if (stubs && stubs->val_print)
+    {
+      return (stubs->demangle (mangled, options));
+    }
+  return NULL;
+}

@@ -24,4 +24,6 @@ void gdb_ocaml_support_val_print (struct type *type, struct symbol *symbol,
                                   const struct value_print_options *options,
                                   int depth);
 
+char* gdb_ocaml_support_demangle (char* mangled, int options) ;
+
 #endif /*!GDB_OCAML_SUPPORT*/

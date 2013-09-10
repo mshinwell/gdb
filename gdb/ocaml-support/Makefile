@@ -2,8 +2,10 @@ CC=gcc
 OCAMLC=ocamlc
 OCAMLOPT=ocamlopt
 
+OCAML_LIB=`ocamlc -where`
+
 CFLAGS='-I .. -I ../common -I ../../include -ggdb'
-OCAMLFLAGS=-I /home/mark/dev/github-ocaml-install/lib/ocaml/compiler-libs
+OCAMLFLAGS=-I $(OCAML_LIB)/compiler-libs
 SRC=gdb_ocaml_support.c ml_gdb.c gdb.ml gdb_ocaml_support.ml
 TARGET_LIB=libgdb_ocaml_support.so
 
@@ -19,8 +21,8 @@ clean:
 .PHONY: bytecode
 bytecode:
 	$(OCAMLC) -output-obj -o $(TARGET_LIB) $(OCAMLFLAGS) -ccopt $(CFLAGS) \
-          /home/mark/dev/github-ocaml-install/lib/ocaml/compiler-libs/ocamlcommon.cma \
-          /home/mark/dev/github-ocaml-install/lib/ocaml/compiler-libs/ocamloptcomp.cma \
+          $(OCAML_LIB)/compiler-libs/ocamlcommon.cma \
+          $(OCAML_LIB)/compiler-libs/ocamloptcomp.cma \
 	  dynlink.cma bigarray.cma -runtime-variant _shared \
 	  $(SRC)
 

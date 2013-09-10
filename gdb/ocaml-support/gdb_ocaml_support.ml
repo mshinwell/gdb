@@ -1,6 +1,42 @@
 (* CR mshinwell: transition to using [Core_kernel] *)
 
 module List = ListLabels
+module String = struct
+  include StringLabels
+
+  (* [is_suffix s ~suff] returns [true] if the string [s] ends with the suffix [suff] *)
+  let is_suffix s ~suffix =
+    let len_suff = String.length suffix in
+    let len_s = String.length s in
+    len_s >= len_suff
+    && (let rec loop i =
+          i = len_suff || (suffix.[len_suff - 1 - i] = s.[len_s - 1 - i] && loop (i + 1))
+        in
+        loop 0)
+
+  let is_prefix s ~prefix =
+    let len_pref = String.length prefix in
+    String.length s >= len_pref
+    && (let rec loop i =
+          i = len_pref || (prefix.[i] = s.[i] && loop (i + 1))
+        in
+        loop 0)
+
+  let drop_suffix str n =
+    try sub str ~pos:0 ~len:(length str - n)
+    with _ -> ""
+
+  let drop_stamp str =
+    let len = length str - 1 in
+    let is_digit c = c >= '0' && c <= '9' in
+    let rec find_stamp_len i =
+      if i <= 0 then 0
+      else if str.[i] = '_' then len - i + 1
+      else if not (is_digit str.[i]) then 0
+      else find_stamp_len (i - 1)
+    in
+    drop_suffix str (find_stamp_len len)
+end
 
 module Cmt_file : sig
   type t
@@ -18,6 +54,9 @@ end = struct
     (* CR mshinwell: once we have [Core_kernel], switch to a table. *)
     (* CR mshinwell: we can almost certainly do better than a map from
        every identifier (at least in common cases). *)
+    (* CR trefis for mshinwell: in ocp-index, they use a trie from names to
+       locations, you might want to do the same (but for types instead of
+       positions, ofc) here. *)
     idents_to_types : (string * (Types.type_expr * Env.t)) list;
   }
 
@@ -542,6 +581,50 @@ let val_print addr stream ~symbol_linkage_name ~source_file_path =
 
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
 
+let demangle mangled =
+  if
+    String.is_suffix mangled ~suffix:"__frametable" ||
+    String.is_suffix mangled ~suffix:"__begin" ||
+    String.is_suffix mangled ~suffix:"__end"
+  then
+    mangled
+  else
+    let str = String.copy mangled in
+    let rec loop i j =
+      if j >= String.length str then
+        i
+      else if str.[j] = '_' && j + 1 < String.length str && str.[j + 1] = '_' then (
+        (* So, here is the funny part: there's no way to distinguish between "__" inserted
+            by [Compilenv.make_symbol] (see asmcomp/compilenv.ml) and names containing
+            "__".
+            We are just going to assume that people never use "__" in their name (although
+            we know for a fact that this happens in Core.) *)
+        str.[i] <- '.' ;
+        loop (i + 1) (j + 2)
+      ) else (
+        str.[i] <- str.[j] ;
+        loop (i + 1) (j + 1)
+      )
+    in
+    let len = loop 0 0 in
+    String.sub str ~pos:0 ~len
 
-let demangle name options = "TODO"
-let () = Callback.register "gdb_ocaml_support_demangle" val_print
+let demangle mangled_name =
+  let is_caml_name =
+    String.length mangled_name > 4 &&
+    String.is_prefix mangled_name ~prefix:"caml" &&
+    (* Beware: really naive *)
+    mangled_name.[4] <> '_' &&
+    mangled_name.[4] = (Char.uppercase mangled_name.[4])
+  in
+  let maybe_stamped =
+    if not is_caml_name then mangled_name else
+    demangle (String.sub mangled_name ~pos:4 ~len:(String.length mangled_name - 4))
+  in
+  let unstamped = String.drop_stamp maybe_stamped in
+  if String.is_suffix unstamped ~suffix:"anon_fun" then
+    maybe_stamped
+  else
+    unstamped
+
+let () = Callback.register "gdb_ocaml_support_demangle" demangle
