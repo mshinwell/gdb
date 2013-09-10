@@ -151,9 +151,10 @@ typedef unsigned long long value;
 #define Custom_tag 255
 
 static int
-is_ocaml_value_type (struct type* type)
+is_ocaml_type (struct type* type)
 {
-  return (TYPE_NAME (type) && strcmp (TYPE_NAME (type), "value") == 0);
+  return (TYPE_NAME (type)
+    && strncmp (TYPE_NAME (type), "__ocaml", 7) == 0);
 }
 
 static void
@@ -335,10 +336,11 @@ ocaml_val_print (struct type *type, struct symbol *symbol,
                  const struct value *val,
                  const struct value_print_options *options)
 {
-  if (is_ocaml_value_type (type)) {
+  if (is_ocaml_type (type)) {
     if (ocaml_support_val_print (type, symbol, valaddr, embedded_offset,
                                  address, stream, recurse, val, options, 0));
     else
+      /* CR mshinwell: deprecate this */
       ocaml_val_print_ocaml_value (type, valaddr, embedded_offset,
                                    address, stream, recurse, val, options, 0);
   }

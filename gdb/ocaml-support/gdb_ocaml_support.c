@@ -52,16 +52,15 @@ ocaml_val_print (value callback,
                  int depth)
 {
   CAMLparam0();
-  CAMLlocal3(v_symbol, v_symbol_option, v_source_path);
+  CAMLlocal4(v_symbol, v_symbol_option, v_source_path, v_type);
   value v_source_path_option;
   CAMLlocalN(args, 3);
+  const char* source_path;
   const char* symbol_linkage_name;
   struct symtab* symtab;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
 
-  /* CR mshinwell: need to work out how to stop gdb from printing the stamps,
-     now that the linkage names include those. */
-
+#if 0
   /* Extract the linkage name (equivalent of [Ident.unique_name]) from the
      symbol that we're being asked to print, if such a symbol exists. */
   if (symbol) {
@@ -103,6 +102,29 @@ ocaml_val_print (value callback,
     Field(v_source_path_option, 0) = v_source_path;
   } else {
     v_source_path_option = Val_long(0);  /* None */
+  }
+#endif
+
+  gdb_assert(type != NULL && TYPE_NAME(type) != NULL);  /* enforced in ocaml-lang.c */
+  symbol_linkage_name = strrchr(TYPE_NAME(type), ' ');
+  if (!symbol_linkage_name) {
+    /* CR mshinwell: should this emit a warning? */
+    v_symbol_option = Val_long(0);  /* None */
+    v_source_path_option = Val_long(0);  /* None */
+  }
+  else {
+    /* CR mshinwell: consider doing this in the OCaml code */
+    source_path = &(TYPE_NAME(type))[7];  /* skip "__ocaml" */
+    v_source_path = caml_alloc_string(symbol_linkage_name - source_path);
+    strncpy(String_val(v_source_path), source_path,
+            symbol_linkage_name - source_path);
+
+    v_symbol = caml_copy_string(++symbol_linkage_name);
+    v_symbol_option = caml_alloc_small(1, 0 /* Some */);
+    Field(v_symbol_option, 0) = v_symbol;
+
+    v_source_path_option = caml_alloc_small(1, 0 /* Some */);
+    Field(v_source_path_option, 0) = v_source_path;
   }
 
   /* The printing code itself is written in OCaml. */

@@ -378,7 +378,7 @@ let rec val_print ~depth v out ~type_of_ident ~don't_print_type = (* CR mshinwel
               print_element v;
               Gdb.print out "]"
             in
-            let default ?prefix_with ?type_of_field () =
+            let default ?prefix_with ?type_of_field ?(don't_print_type = false) () =
               begin match prefix_with with
               | None -> if tag > 0 then Gdb.printf out "tag %d:" tag
               | Some prefix_with -> Gdb.printf out "%s " prefix_with
@@ -483,6 +483,7 @@ let rec val_print ~depth v out ~type_of_ident ~don't_print_type = (* CR mshinwel
                     arg_types.(field_number), env
                   in
                   default () ~prefix_with:(Ident.name ctor_ident) ~type_of_field
+                    ~don't_print_type:true
                 end
               | `Tuple component_types ->
                 let component_types = Array.of_list component_types in
@@ -491,7 +492,7 @@ let rec val_print ~depth v out ~type_of_ident ~don't_print_type = (* CR mshinwel
                         && field_number < Array.length component_types);
                     component_types.(field_number), env
                   in
-                  default () ~type_of_field
+                  default () ~type_of_field ~don't_print_type:true
               | `Something_else ->
                 default ()
               | `Type_decl_not_found ->
