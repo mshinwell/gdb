@@ -312,7 +312,7 @@ let val_print_int ~value ~gdb_stream ~type_of_ident =
     in
     print_type_expr type_expr
 
-let rec val_print ~depth v out ~type_of_ident = (* CR mshinwell: rename [type_of_ident] *)
+let rec val_print ~depth v out ~type_of_ident ~don't_print_type = (* CR mshinwell: rename [type_of_ident] *)
   if depth > 2 then Gdb.print out ".." else begin
     if Gdb.Obj.is_int v
     then val_print_int ~gdb_stream:out ~type_of_ident ~value:v
@@ -321,6 +321,24 @@ let rec val_print ~depth v out ~type_of_ident = (* CR mshinwell: rename [type_of
       begin match Gdb.Obj.tag v with
         | tag when tag < Gdb.Obj.closure_tag  ->
           begin
+            let print_list v ~type_of_elements =
+              Gdb.print out "[";
+              let rec print_element v =
+                if Gdb.Obj.is_block v then begin
+                  try
+                    let elt = Gdb.Obj.field v 0 in
+                    let next = Gdb.Obj.field v 1 in
+                    val_print ~depth:(succ depth) elt out ~type_of_ident:type_of_elements
+                      ~don't_print_type:true;
+                    if Gdb.Obj.is_block next then Gdb.print out "; ";
+                    print_element next
+                  with Gdb.Read_error _ ->
+                    Gdb.print out "<list element read failed>"
+                end
+              in
+              print_element v;
+              Gdb.print out "]"
+            in
             let default ?prefix_with ?type_of_field () =
               begin match prefix_with with
               | None -> if tag > 0 then Gdb.printf out "tag %d:" tag
@@ -337,6 +355,7 @@ let rec val_print ~depth v out ~type_of_ident = (* CR mshinwell: rename [type_of
                     | Some type_of_field -> Some (type_of_field ~field_number:field)
                   in
                   val_print ~depth:(succ depth) v' out ~type_of_ident:type_of_field
+                    ~don't_print_type
                 with Gdb.Read_error _ ->
                   Gdb.printf out "<field %d read failed>" field
               done;
@@ -347,12 +366,12 @@ let rec val_print ~depth v out ~type_of_ident = (* CR mshinwell: rename [type_of
             | Some (type_expr, env) ->
               let rec identify_value type_expr =
                 match type_expr.Types.desc with
-                | Types.Tconstr (path, _args, _abbrev_memo_ref) ->
+                | Types.Tconstr (path, args, _abbrev_memo_ref) ->
                   begin match env_find_type ~env ~path with
                   | None -> `Type_decl_not_found
                   | Some type_decl ->
                     match type_decl.Types.type_kind with
-                    | Types.Type_variant cases -> `Constructed_value cases
+                    | Types.Type_variant cases -> `Constructed_value (cases, args)
                     | Types.Type_abstract -> `Something_else
                     | Types.Type_record (field_decls, record_repr) ->
                       `Record (field_decls, record_repr)
@@ -395,19 +414,29 @@ let rec val_print ~depth v out ~type_of_ident = (* CR mshinwell: rename [type_of
                       Gdb.printf out "%s = " (Ident.name field_name);
                       val_print ~depth:(succ depth) v' out
                         ~type_of_ident:(Some (field_type, env))
+                        ~don't_print_type
                     with Gdb.Read_error _ ->
                       Gdb.printf out "<field %d read failed>" field
                   done;
                   if num_fields > 1 then Gdb.print_endline out;
                   Gdb.print out "  }"
                 end
-              | `Constructed_value cases ->
+              | `Constructed_value (cases, args) ->
                 let non_constant_ctors = extract_non_constant_ctors cases in
                 let ctor_info =
                   try Some (List.assoc tag non_constant_ctors) with Not_found -> None
                 in
                 begin match ctor_info with
                 | None -> default ()
+                | Some (ctor_ident, [_element_tyvar; _list_type])
+                  (* CR mshinwell: Probably need to check that the type name is
+                     [Pervasives.list], or something?  Use [path], above. *)
+                  when Ident.name ctor_ident = "::" && List.length args = 1 ->
+                  begin match args with
+                  | [element_type] ->
+                    print_list v ~type_of_elements:(Some (element_type, env))
+                  | _ -> assert false
+                  end
                 | Some (ctor_ident, arg_types) ->
                   let arg_types = Array.of_list arg_types in
                   let type_of_field ~field_number =
@@ -471,48 +500,21 @@ let rec val_print ~depth v out ~type_of_ident = (* CR mshinwell: rename [type_of
       end
       else Gdb.printf out "<unaligned object>"
     end;
-    match type_of_ident with
-    | None -> ()
-      (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
-    | Some (type_expr, _env) ->
-      Gdb.print out " : ";
-      let formatter =
-        Format.make_formatter
-          (fun str pos len -> Gdb.print out (String.sub str pos len))
-          (fun () -> ())
-      in
-      Printtyp.type_expr formatter type_expr;
-      Format.pp_print_flush formatter ()
-(*
-      let rec print_type_expr type_expr =
-        match type_expr.Types.desc with
-        | Types.Tconstr (path, [], _abbrev_memo_ref) ->
-          Gdb.print out " : ";
-          Gdb.print out (Path.name path)
-        | Types.Tlink type_expr -> print_type_expr type_expr
-        | Types.Tvariant _
-        | Types.Tvar _
-        | Types.Tarrow _
-        | Types.Ttuple _
-        | Types.Tconstr _
-        | Types.Tobject _
-        | Types.Tfield _
-        | Types.Tnil
-        | Types.Tsubst _
-        | Types.Tunivar _
-        | Types.Tpoly _
-        | Types.Tpackage _ -> ()
-      in
-      print_type_expr type_expr
-*)
+    if not don't_print_type then begin
+      match type_of_ident with
+      | None -> ()
+        (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
+      | Some (type_expr, _env) ->
+        Gdb.print out " : ";
+        let formatter =
+          Format.make_formatter
+            (fun str pos len -> Gdb.print out (String.sub str pos len))
+            (fun () -> ())
+        in
+        Printtyp.type_expr formatter type_expr;
+        Format.pp_print_flush formatter ()
+    end
   end
-
-(*
-        match type_expr.Types.desc with
-        | Tconstr (path, _args, _abbrev_memo_ref) ->
-          Printf.printf "constructor: %s\n" (Path.name path)
-        | 
-*)
 
 let val_print ~depth v out ~symbol_linkage_name ~cmt_file =
   let type_of_ident =
@@ -521,7 +523,7 @@ let val_print ~depth v out ~symbol_linkage_name ~cmt_file =
     | Some symbol_linkage_name ->
       Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name
   in
-  val_print ~depth v out ~type_of_ident
+  val_print ~depth v out ~type_of_ident ~don't_print_type:false
 
 let val_print addr stream ~symbol_linkage_name ~source_file_path =
   let cmt_file =
