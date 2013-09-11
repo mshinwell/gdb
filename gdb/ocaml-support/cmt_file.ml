@@ -1,9 +1,4 @@
-module List = ListLabels
-
-module StringTable = Map.Make (struct
-  type t = string
-  let compare = Pervasives.compare
-end)
+open Std
 
 module LocTable = Map.Make (struct
   type t = Location.t
@@ -22,7 +17,7 @@ type t = {
   (* CR trefis for mshinwell: in ocp-index, they use a trie from names to
       locations, you might want to do the same (but for types instead of
       positions, ofc) here. *)
-  idents_to_types : (Types.type_expr * Env.t) StringTable.t ;
+  idents_to_types : (Types.type_expr * Env.t) String.Map.t ;
   application_points :
     ([ `Recover_label_ty of string | `Ty of Types.type_expr ] list * Env.t) LocTable.t
 }
@@ -30,19 +25,19 @@ type t = {
 let create_null () = {
   cmi_infos = None;
   cmt_infos = None;
-  idents_to_types    = StringTable.empty;
+  idents_to_types    = String.Map.empty;
   application_points = LocTable.empty;
 }
 
 let rec process_pattern ~pat ~idents_to_types =
   match pat.Typedtree.pat_desc with
   | Typedtree.Tpat_var (ident, _loc) ->
-    StringTable.add (Ident.unique_name ident)
+    String.Map.add (Ident.unique_name ident)
       (pat.Typedtree.pat_type, pat.Typedtree.pat_env)
       idents_to_types
   | Typedtree.Tpat_alias (pat, ident, _loc) ->
     let idents_to_types =
-      StringTable.add (Ident.unique_name ident)
+      String.Map.add (Ident.unique_name ident)
         (pat.Typedtree.pat_type, pat.Typedtree.pat_env)
         idents_to_types
     in
@@ -127,7 +122,7 @@ and process_expression ~exp ((idents_to_types, app_points) as init) =
     process_expression ~exp:e2 acc
   | Texp_for (ident, _, e1, e2, _, e3) ->
     let idents_to_types =
-      StringTable.add (Ident.unique_name ident) (e1.exp_type, e1.exp_env)
+      String.Map.add (Ident.unique_name ident) (e1.exp_type, e1.exp_env)
         idents_to_types
     in
     let acc = process_expression ~exp:e1 (idents_to_types, app_points) in
@@ -151,7 +146,7 @@ and process_expression ~exp ((idents_to_types, app_points) as init) =
     (* TODO: handle [mod_expr] *)
 (*
     let idents_to_types =
-      StringTable.add (Ident.unique_name ident)
+      String.Map.add (Ident.unique_name ident)
         (mod_expr.mod_type, mod_expr.mod_env) idents_to_types
     in
 *)
@@ -204,9 +199,9 @@ let create_idents_to_types_map ~cmt_infos =
   (* CR mshinwell: find out what "partial" implementations and
       interfaces are, and fix cmt_format.mli so it tells you *)
   | Cmt_format.Partial_implementation _
-  | Cmt_format.Partial_interface _ -> StringTable.empty, LocTable.empty
+  | Cmt_format.Partial_interface _ -> String.Map.empty, LocTable.empty
   | Cmt_format.Implementation structure ->
-    process_implementation ~structure ~idents_to_types:StringTable.empty
+    process_implementation ~structure ~idents_to_types:String.Map.empty
       ~app_points:LocTable.empty
 
 let load ~filename =
@@ -218,7 +213,7 @@ let load ~filename =
   in
   let idents_to_types, application_points =
     match cmt_infos with
-    | None -> StringTable.empty, LocTable.empty
+    | None -> String.Map.empty, LocTable.empty
     | Some cmt_infos -> create_idents_to_types_map ~cmt_infos
   in {
     cmi_infos ;
@@ -228,7 +223,7 @@ let load ~filename =
   }
 
 let type_of_ident t ~unique_name =
-  try Some (StringTable.find unique_name t.idents_to_types)
+  try Some (String.Map.find unique_name t.idents_to_types)
   with Not_found -> None
 
 let find_argument_types t ~source_file_of_call_site ~line_number_of_call_site =
