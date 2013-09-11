@@ -1,3 +1,23 @@
+(***********************************************************************)
+(*                                                                     *)
+(*                 Debugger support library for OCaml                  *)
+(*                                                                     *)
+(*  Copyright 2013, Jane Street Holding                                *)
+(*                                                                     *)
+(*  Licensed under the Apache License, Version 2.0 (the "License");    *)
+(*  you may not use this file except in compliance with the License.   *)
+(*  You may obtain a copy of the License at                            *)
+(*                                                                     *)
+(*      http://www.apache.org/licenses/LICENSE-2.0                     *)
+(*                                                                     *)
+(*  Unless required by applicable law or agreed to in writing,         *)
+(*  software distributed under the License is distributed on an        *)
+(*  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,       *)
+(*  either express or implied.  See the License for the specific       *)
+(*  language governing permissions and limitations under the License.  *)
+(*                                                                     *)
+(***********************************************************************)
+
 (* CR mshinwell: transition to using [Core_kernel] *)
 
 module List = ListLabels
@@ -26,17 +46,62 @@ module String = struct
     try sub str ~pos:0 ~len:(length str - n)
     with _ -> ""
 
+  (* Examples of stamped names:
+        x_1024     variable, Ident.t unique name x/1024
+        x_1024-0   first function argument, Ident.t unique name x/1024
+        x_1024-1   second function argument, Ident.t unique name x/1024
+  *)
   let drop_stamp str =
     let len = length str - 1 in
-    let is_digit c = c >= '0' && c <= '9' in
+    let is_digit_or_dash c = (c >= '0' && c <= '9') || (c = '-') in
     let rec find_stamp_len i =
       if i <= 0 then 0
       else if str.[i] = '_' then len - i + 1
-      else if not (is_digit str.[i]) then 0
+      else if not (is_digit_or_dash str.[i]) then 0
       else find_stamp_len (i - 1)
     in
     drop_suffix str (find_stamp_len len)
 end
+
+let strip_parameter_index_from_unique_name unique_name =
+  match try Some (String.rindex unique_name '-') with Not_found -> None with
+  | None -> unique_name
+  | Some dash ->
+    match try Some (String.rindex unique_name '_') with Not_found -> None with
+    | None -> unique_name
+    | Some underscore ->
+      if underscore < dash then begin
+        let stamp_ok =
+          try
+            ignore (int_of_string (String.sub unique_name
+                (dash + 1) ((String.length unique_name) - (dash + 1))));
+            true
+          with Failure _ -> false
+        in
+        if stamp_ok then
+          String.sub unique_name 0 dash
+        else
+          unique_name
+      end
+      else
+        unique_name
+
+let parameter_index_of_unique_name unique_name =
+  match try Some (String.rindex unique_name '-') with Not_found -> None with
+  | None -> None
+  | Some dash ->
+    match try Some (String.rindex unique_name '_') with Not_found -> None with
+    | None -> None
+    | Some underscore ->
+      if underscore < dash then
+        try
+          Some (int_of_string (String.sub unique_name
+              (dash + 1) ((String.length unique_name) - (dash + 1))))
+        with Failure _ -> None
+      else
+        None
+
+(* CR mshinwell: we should have proper abstract types for the stamped names *)
 
 module Cmt_file : sig
   type t
@@ -47,6 +112,12 @@ module Cmt_file : sig
   val type_of_ident : t
     -> unique_name:string
     -> (Types.type_expr * Env.t) option
+
+  val find_argument_types : t
+    -> source_file_of_call_site:string
+    -> line_number_of_call_site:int
+    -> ([ `Find_type_from_label_name of string
+        | `Type_is of Types.type_expr ] list * Env.t) option
 end = struct
   type t = {
     cmi_infos : Cmi_format.cmi_infos option;
@@ -58,52 +129,58 @@ end = struct
        locations, you might want to do the same (but for types instead of
        positions, ofc) here. *)
     idents_to_types : (string * (Types.type_expr * Env.t)) list;
+    application_points :
+      (Location.t *
+        ([ `Find_type_from_label_name of string
+         | `Type_is of Types.type_expr ] list * Env.t)) list;
   }
 
   let create_null () =
     { cmi_infos = None;
       cmt_infos = None;
       idents_to_types = [];
+      application_points = [];
     }
 
-  let create_idents_to_types_map ~cmt_infos =
-    (* CR mshinwell: needs to keep track of the environment, to resolve
-       [Path.t]s *)
-    let rec process_pattern ~pat ~idents_to_types =
+  let extract_types_and_application_points ~cmt_infos =
+    let rec process_pattern ~pat ~idents_to_types ~application_points =
       match pat.Typedtree.pat_desc with
       | Typedtree.Tpat_var (ident, _loc) ->
         (Ident.unique_name ident, (pat.Typedtree.pat_type,
-         pat.Typedtree.pat_env))::idents_to_types
+         pat.Typedtree.pat_env))::idents_to_types, application_points
       | Typedtree.Tpat_alias (pat, ident, _loc) ->
         process_pattern ~pat
           ~idents_to_types:
             ((Ident.unique_name ident,
              (pat.Typedtree.pat_type, pat.Typedtree.pat_env))::idents_to_types)
+          ~application_points
       | Typedtree.Tpat_tuple pats
       | Typedtree.Tpat_construct (_, _, pats, _)
       | Typedtree.Tpat_array pats ->
         List.fold_left pats
-          ~init:idents_to_types
-          ~f:(fun idents_to_types pat ->
-                process_pattern ~pat ~idents_to_types)
+          ~init:(idents_to_types, application_points)
+          ~f:(fun (idents_to_types, application_points) pat ->
+                process_pattern ~pat ~idents_to_types ~application_points)
       | Typedtree.Tpat_variant (_label, pat_opt, _row_desc) ->
         begin match pat_opt with
-        | None -> idents_to_types
-        | Some pat -> process_pattern ~pat ~idents_to_types
+        | None -> idents_to_types, application_points
+        | Some pat -> process_pattern ~pat ~idents_to_types ~application_points
         end
       | Typedtree.Tpat_record (loc_desc_pat_list, _closed) ->
         List.fold_left loc_desc_pat_list
-          ~init:idents_to_types
-          ~f:(fun idents_to_types (_loc, _desc, pat) ->
-                process_pattern ~pat ~idents_to_types)
+          ~init:(idents_to_types, application_points)
+          ~f:(fun (idents_to_types, application_points) (_loc, _desc, pat) ->
+                process_pattern ~pat ~idents_to_types ~application_points)
       | Typedtree.Tpat_or (pat1, pat2, _row_desc) ->
-        process_pattern ~pat:pat1
-          ~idents_to_types:(process_pattern ~pat:pat2 ~idents_to_types)
+        let idents_to_types, application_points =
+          process_pattern ~pat:pat2 ~idents_to_types ~application_points
+        in
+        process_pattern ~pat:pat1 ~idents_to_types ~application_points
       | Typedtree.Tpat_lazy pat ->
-        process_pattern ~pat ~idents_to_types
+        process_pattern ~pat ~idents_to_types ~application_points
       | Typedtree.Tpat_any
-      | Typedtree.Tpat_constant _ -> idents_to_types
-    and process_expression ~exp ~idents_to_types =
+      | Typedtree.Tpat_constant _ -> idents_to_types, application_points
+    and process_expression ~exp ~idents_to_types ~application_points =
       match exp.Typedtree.exp_desc with
       | Typedtree.Texp_let (_rec, pat_exp_list, body) ->
 (*
@@ -120,15 +197,26 @@ end = struct
           ) None env ();
         Printf.printf "------\n%!";
 *)
-        process_expression ~exp:body
-          ~idents_to_types:
-            (process_pat_exp_list ~pat_exp_list ~idents_to_types)
+        let idents_to_types, application_points =
+          process_pat_exp_list ~pat_exp_list ~idents_to_types ~application_points
+        in
+        process_expression ~exp:body ~idents_to_types ~application_points
       | Typedtree.Texp_function (_label, pat_exp_list, _partial) ->
-        process_pat_exp_list ~pat_exp_list ~idents_to_types
+        process_pat_exp_list ~pat_exp_list ~idents_to_types ~application_points
       (* CR mshinwell: this needs finishing, yuck *)
+      | Typedtree.Texp_apply (_function, args) ->
+        let location = exp.Typedtree.exp_loc in
+        let env = exp.Typedtree.exp_env in
+        let arg_types =
+          List.map args
+            ~f:(fun (label, exp_opt, _optional) ->
+                  match exp_opt with
+                  | None -> `Find_type_from_label_name label
+                  | Some exp -> `Type_is exp.Typedtree.exp_type)
+        in
+        idents_to_types, ((location, (arg_types, env))::application_points)
       | Typedtree.Texp_ident _
       | Typedtree.Texp_constant _
-      | Typedtree.Texp_apply _
       | Typedtree.Texp_match _
       | Typedtree.Texp_try _
       | Typedtree.Texp_tuple _
@@ -153,21 +241,23 @@ end = struct
       | Typedtree.Texp_assertfalse
       | Typedtree.Texp_lazy _
       | Typedtree.Texp_object _
-      | Typedtree.Texp_pack _ -> idents_to_types
-    and process_pat_exp_list ~pat_exp_list ~idents_to_types =
+      | Typedtree.Texp_pack _ -> idents_to_types, application_points
+    and process_pat_exp_list ~pat_exp_list ~idents_to_types ~application_points =
       List.fold_left pat_exp_list
-        ~init:idents_to_types
-        ~f:(fun idents_to_types (pat, exp) ->
-              process_pattern ~pat
-                ~idents_to_types:(process_expression ~exp ~idents_to_types))
+        ~init:(idents_to_types, application_points)
+        ~f:(fun (idents_to_types, application_points) (pat, exp) ->
+              let idents_to_types, application_points =
+                process_expression ~exp ~idents_to_types ~application_points
+              in
+              process_pattern ~pat ~idents_to_types ~application_points)
     in
-    let process_implementation ~structure ~idents_to_types =
+    let process_implementation ~structure ~idents_to_types ~application_points =
       List.fold_left structure.Typedtree.str_items
-        ~init:idents_to_types
-        ~f:(fun idents_to_types str_item ->
+        ~init:(idents_to_types, application_points)
+        ~f:(fun (idents_to_types, application_points) str_item ->
               match str_item.Typedtree.str_desc with
               | Typedtree.Tstr_value (_rec, pat_exp_list) ->
-                process_pat_exp_list ~pat_exp_list ~idents_to_types
+                process_pat_exp_list ~pat_exp_list ~idents_to_types ~application_points
               | Typedtree.Tstr_eval _
               | Typedtree.Tstr_primitive _
               | Typedtree.Tstr_type _
@@ -179,16 +269,17 @@ end = struct
               | Typedtree.Tstr_open _
               | Typedtree.Tstr_class _
               | Typedtree.Tstr_class_type _
-              | Typedtree.Tstr_include _ -> idents_to_types)
+              | Typedtree.Tstr_include _ -> idents_to_types, application_points)
     in
     let cmt_annots = cmt_infos.Cmt_format.cmt_annots in
     match cmt_annots with
     | Cmt_format.Packed _
     | Cmt_format.Interface _
     (* CR mshinwell: find out what "partial" implementations and
-       interfaces are, and fix cmt_format.mli so it tells you *)
+       interfaces are, and fix cmt_format.mli so it tells you
+       mshinwell: trefis says they're for when compilation stops after an error *)
     | Cmt_format.Partial_implementation _
-    | Cmt_format.Partial_interface _ -> []
+    | Cmt_format.Partial_interface _ -> [], []
     | Cmt_format.Implementation structure ->
       (* CR mshinwell: need to load cmts for our dependencies *)
 (*
@@ -196,7 +287,7 @@ end = struct
         ~f:(fun (name, _) -> Printf.printf "Import: %s\n%!" name);
       Printf.printf "end of imports\n%!";
 *)
-      process_implementation ~structure ~idents_to_types:[]
+      process_implementation ~structure ~idents_to_types:[] ~application_points:[]
 
   let load ~filename =
     let cmi_infos, cmt_infos =
@@ -205,36 +296,82 @@ end = struct
       with Sys_error _ ->
         None, None
     in
-    let idents_to_types =
+    let idents_to_types, application_points =
       match cmt_infos with
-      | None -> []
+      | None -> [], []
       | Some cmt_infos ->
-        List.map (create_idents_to_types_map ~cmt_infos)
-          ~f:(fun (ident, (type_expr, env)) ->
-                let env =
-                  Env.env_of_only_summary Envaux.env_from_summary_best_effort env
-                in
-                ident, (type_expr, env))
+        let idents_to_types, application_points =
+          extract_types_and_application_points ~cmt_infos
+        in
+        let idents_to_types =
+          List.map idents_to_types
+            ~f:(fun (ident, (type_expr, env)) ->
+                  let env =
+                    Env.env_of_only_summary Envaux.env_from_summary_best_effort env
+                  in
+                  (* CR mshinwell: not sure what to do here.  We may have idents with
+                     the same stamps and names across source files having the same name.
+
+                     Notes:
+
+                     x/1000 |--> (unit, env)        (current situation, doesn't suffice)
+
+                    .ocamltype42:
+                      ... __ocamlfoo.ml x/1000 ...
+                    ..
+                    .ocamltype100:
+                      ... __ocamlfoo.ml x/1000 ...
+
+                  *)
+                  ident, (type_expr, env))
+        in
+        let application_points =
+          List.map application_points
+            ~f:(fun (location, (type_exprs, env)) ->
+                  let env =
+                    Env.env_of_only_summary Envaux.env_from_summary_best_effort env
+                  in
+                  location, (type_exprs, env))
+        in
+        idents_to_types, application_points
     in
-(*
-    List.iter idents_to_types
-      ~f:(fun (ident, _type) ->
-            Printf.printf "idents_to_types: '%s'\n" ident);
-*)
     { cmi_infos;
       cmt_infos;
       idents_to_types;
+      application_points;
     }
 
   let type_of_ident t ~unique_name =
-(*
-    Printf.printf "trying to find '%s'\n%!" unique_name;
-*)
+    let unique_name = strip_parameter_index_from_unique_name unique_name in
     try Some (List.assoc unique_name t.idents_to_types) with Not_found -> None
+
+  let find_argument_types t ~source_file_of_call_site ~line_number_of_call_site =
+    (* CR mshinwell: this is dreadful, but will suffice for now *)
+    let candidates =
+      List.fold_left t.application_points
+        ~init:[]
+        ~f:(fun candidates (location, (type_exprs, env)) ->
+              let start_file, start_line, _start_char =
+                Location.get_pos_info location.Location.loc_start
+              in
+              let end_file, end_line, _end_char =
+                Location.get_pos_info location.Location.loc_end
+              in
+              (* CR mshinwell: still not good enough---could have multiple source files
+                 with the same name, as noted elsewhere. *)
+              if start_file = source_file_of_call_site && start_file = end_file
+                && start_line <= line_number_of_call_site
+                && end_line >= line_number_of_call_site
+              then
+                (type_exprs, env)::candidates
+              else
+                candidates)
+    in
+    match candidates with
+    | [] -> None
+    | [candidate] -> Some candidate
+    | candidate::_candidates -> Some candidate (* CR mshinwell: will suffice for now *)
 end
-(*
-let _ = prerr_endline "Hello from ml world!"
-*)
 
 let extract_non_constant_ctors ~cases =
   let non_constant_ctors, _ =
@@ -556,12 +693,73 @@ let rec val_print ~depth v out ~type_of_ident ~don't_print_type = (* CR mshinwel
     end
   end
 
-let val_print ~depth v out ~symbol_linkage_name ~cmt_file =
+let rec type_is_polymorphic type_expr =
+  let rec check_type_desc = function
+    | Types.Tvar _ -> true
+    | Types.Tarrow (_, t1, t2, _) -> type_is_polymorphic t1 || type_is_polymorphic t2
+    | Types.Tconstr (_, tys, _)
+    | Types.Ttuple tys -> List.exists tys ~f:type_is_polymorphic
+    | Types.Tobject _ -> true (* CR mshinwell: fixme *)
+    | Types.Tnil -> false
+    | Types.Tlink ty
+    | Types.Tsubst ty -> type_is_polymorphic ty
+    | Types.Tfield _ -> true (* CR mshinwell: fixme *)
+    | Types.Tvariant _ -> true (* CR mshinwell: fixme *)
+    | Types.Tunivar _ -> false
+    | Types.Tpoly _ -> true (* CR mshinwell: fixme *)
+    | Types.Tpackage _ -> true (* CR mshinwell: fixme *)
+  in
+  check_type_desc type_expr.Types.desc
+
+module Call_site = struct
+  type t =
+  | None
+  | Some of string * int
+end
+
+(* CR mshinwell: there are THREE functions by the name of [val_print] now *)
+let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site =
   let type_of_ident =
     match symbol_linkage_name with
     | None -> None
     | Some symbol_linkage_name ->
-      Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name
+      let action =
+        let unique_name = strip_parameter_index_from_unique_name symbol_linkage_name in
+        match Cmt_file.type_of_ident cmt_file ~unique_name with
+        | None -> `Try_call_site_but_fallback_to None
+        | Some (type_expr, env) ->
+          if type_is_polymorphic type_expr then
+            `Try_call_site_but_fallback_to (Some (type_expr, env))
+          else
+            `Have_type (type_expr, env)
+      in
+      match action with
+      | `Have_type (type_expr, env) -> Some (type_expr, env)
+      | `Try_call_site_but_fallback_to fallback ->
+        match call_site with
+        | Call_site.None -> fallback
+        | Call_site.Some (source_file, line_number) ->
+          let from_call_site =
+            Cmt_file.find_argument_types cmt_file
+              ~source_file_of_call_site:source_file
+              ~line_number_of_call_site:line_number
+          in
+          match from_call_site with
+          | None -> fallback
+          | Some (type_exprs, env) ->
+            match parameter_index_of_unique_name symbol_linkage_name with
+            | None -> fallback
+            | Some parameter_index ->
+              if parameter_index < 0 || parameter_index >= List.length type_exprs then
+                fallback
+              else
+                match (Array.of_list type_exprs).(parameter_index) with
+                | `Type_is type_expr -> Some (type_expr, env)
+                | `Find_type_from_label_name label ->
+                  (* CR mshinwell: need to fix this.  Unfortunately [label] is not
+                     stamped, which might make it troublesome to find the correct
+                     identifier. *)
+                  fallback
   in
   val_print ~depth v out ~type_of_ident ~don't_print_type:false
 
@@ -602,10 +800,16 @@ let cmt_file_of_source_file_path ~source_file_path =
     else
       Cmt_file.create_null ()
 
-let val_print addr stream ~dwarf_type =
+let val_print addr stream ~dwarf_type ~call_site =
   let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
   let cmt_file = cmt_file_of_source_file_path ~source_file_path in
-  val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file
+(*
+  begin match call_site with
+  | Call_site.None -> Printf.printf "no call point info\n%!"
+  | Call_site.Some (file, line) -> Printf.printf "call point: %s:%d\n%!" file line
+  end;
+*)
+  val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file ~call_site
 
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
 
@@ -663,15 +867,19 @@ let print_type ~dwarf_type ~out =
   (* CR mshinwell: we can share some of this code with above. *)
   let status =
     match symbol_linkage_name with
-    | None -> `Unknown
+    | None ->
+      Printf.printf "print_type: can't find symbol linkage name\n%!";
+      `Unknown
     | Some symbol_linkage_name ->
+      Printf.printf "print_type: linkage name='%s'\n%!" symbol_linkage_name;
       let cmt_file = cmt_file_of_source_file_path ~source_file_path in
       let type_of_ident =
         Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name
       in
       match type_of_ident with
-      | None -> `Unknown
-        (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
+      | None ->
+        Printf.printf "print_type: '%s' not found in cmt\n%!" symbol_linkage_name;
+        `Unknown
       | Some (type_expr, _env) -> `Ok type_expr
   in
   match status with

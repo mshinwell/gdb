@@ -52,8 +52,9 @@ ocaml_val_print (value callback,
                  int depth)
 {
   CAMLparam0();
-  CAMLlocal1(v_type);
-  CAMLlocalN(args, 3);
+  CAMLlocal3(v_type, v_call_point_source_file, v_call_point);
+  CAMLlocalN(args, 4);
+  struct frame_info* selected_frame;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
 
 #if 0
@@ -104,12 +105,47 @@ ocaml_val_print (value callback,
   gdb_assert(type != NULL && TYPE_NAME(type) != NULL);  /* enforced in ocaml-lang.c */
   v_type = caml_copy_string(TYPE_NAME(type));
 
+  /* Work out if we're being asked to print the value of a symbol that is a formal
+     parameter in the selected stack frame.  If so, then attempt to resolve
+     the source location of the frame's return address, in order that we can later
+     extract the type at which the function (corresponding to the selected frame) was
+     applied. */
+  /* CR mshinwell: think harder about whether the non-uniqueness of stamped idents
+     across compilation units means we could go wrong here. */
+  v_call_point = Val_long(0);  /* Call_point.None */
+
+  /* CR mshinwell: this isn't strictly needed, since we can tell from the mangled name
+     whether the thing is a parameter */
+ /* if (symbol && SYMBOL_IS_ARGUMENT(symbol)) { */
+    selected_frame = get_selected_frame_if_set();
+    if (selected_frame) {
+      CORE_ADDR return_address;
+      if (frame_unwind_caller_pc_if_available(selected_frame, &return_address)) {
+        int line;
+        struct symtab_and_line symtab_and_line = find_pc_line(return_address, 0);
+        line = symtab_and_line.line;
+        if (line > 0) {
+          /* CR mshinwell: what happens if we have more than one source file with
+             the same name? */
+          /* CR mshinwell: we need the character position as well, really... */
+          char* filename = symtab_and_line.symtab->filename;
+          gdb_assert(filename != NULL);  /* cf. symtab.h */
+          v_call_point_source_file = caml_copy_string(filename);
+          v_call_point = caml_alloc_small(2, 0 /* Call_point.Some */);
+          Field(v_call_point, 0) = v_call_point_source_file;
+          Field(v_call_point, 1) = Val_long(line);
+        }
+      }
+/*    }*/
+  }
+
   /* The printing code itself is written in OCaml. */
   args[0] = Val_target (*(CORE_ADDR*)valaddr);
   /* CR mshinwell: make it more explicit that [Val_ptr] allocates */
   args[1] = Val_ptr (stream);
   args[2] = v_type;
-  (void) caml_callbackN (callback, 3, args);
+  args[3] = v_call_point;
+  (void) caml_callbackN (callback, 4, args);
 
   CAMLreturn0;
 }
