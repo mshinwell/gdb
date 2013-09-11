@@ -103,8 +103,6 @@ let parameter_index_of_unique_name unique_name =
 
 (* CR mshinwell: we should have proper abstract types for the stamped names *)
 
-module Cmt_file = Cmt
-
 let extract_non_constant_ctors ~cases =
   let non_constant_ctors, _ =
     List.fold_left cases
