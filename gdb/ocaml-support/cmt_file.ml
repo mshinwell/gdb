@@ -73,16 +73,14 @@ let rec process_pattern ~pat ~idents_to_types =
   | Typedtree.Tpat_constant _ -> idents_to_types
 
 
-and process_expression ~exp ~idents_to_types ~app_points =
+and process_expression ~exp ((idents_to_types, app_points) as init) =
   let open Typedtree in
   match exp.exp_desc with
   | Texp_let (_rec, pat_exp_list, exp) ->
-    let idents_to_types, app_points = 
-      process_pat_exp_list ~pat_exp_list (idents_to_types, app_points)
-    in
-    process_expression ~exp ~idents_to_types ~app_points
+    let acc = process_pat_exp_list ~pat_exp_list init in
+    process_expression ~exp acc
   | Texp_function (_label, pat_exp_list, _partial) ->
-    process_pat_exp_list ~pat_exp_list (idents_to_types, app_points)
+    process_pat_exp_list ~pat_exp_list init
   | Texp_apply (exp, args) ->
     let app_points =
       let lst =
@@ -94,78 +92,60 @@ and process_expression ~exp ~idents_to_types ~app_points =
       in
       LocTable.add (exp.exp_loc) (lst, exp.exp_env) app_points
     in
-    let init = process_expression ~exp ~idents_to_types ~app_points in
-    List.fold_left args ~init ~f:(fun (imap, lmap) (_label, expr_opt, _optional) ->
+    let init = process_expression ~exp (idents_to_types, app_points) in
+    List.fold_left args ~init ~f:(fun acc (_label, expr_opt, _optional) ->
       match expr_opt with
-      | None -> imap, lmap
-      | Some exp -> process_expression ~exp ~idents_to_types:imap ~app_points:lmap
+      | None -> acc
+      | Some exp -> process_expression ~exp acc
     )
   | Texp_match (exp, pat_exp_list, _)
   | Texp_try (exp, pat_exp_list) ->
-    let acc = process_expression ~exp ~idents_to_types ~app_points in
+    let acc = process_expression ~exp init in
     process_pat_exp_list ~pat_exp_list acc
   | Texp_construct (_, _, expr_list, _)
     (* Texp_co... (loc, descr, list, "explicit arity":bool)
       * Note: that last bool disappeared on trunk. *)
   | Texp_array expr_list
   | Texp_tuple expr_list ->
-    let init = idents_to_types, app_points in
-    List.fold_left expr_list ~init ~f:(fun (imap, lmap) exp ->
-      process_expression ~exp ~idents_to_types:imap ~app_points:lmap
-    )
-  | Texp_variant (_, Some exp) -> process_expression ~exp ~idents_to_types ~app_points
+    List.fold_left expr_list ~init ~f:(fun acc exp -> process_expression ~exp acc)
+  | Texp_variant (_, Some exp) -> process_expression ~exp init
   | Texp_record (expr_list, _) ->
-    let init = idents_to_types, app_points in
-    List.fold_left expr_list ~init ~f:(fun (imap, lmap) (_loc, _desc, exp) ->
-      process_expression ~exp ~idents_to_types:imap ~app_points:lmap
+    List.fold_left expr_list ~init ~f:(fun acc (_loc, _desc, exp) ->
+      process_expression ~exp acc
     )
   | Texp_ifthenelse (e1, e2, e_opt) ->
-    let idents_to_types, app_points =
-      process_expression ~exp:e1 ~idents_to_types ~app_points
-    in
-    let idents_to_types, app_points =
-      process_expression ~exp:e2 ~idents_to_types ~app_points
-    in
+    let acc = process_expression ~exp:e1 init in
+    let acc = process_expression ~exp:e2 acc in
     begin match e_opt with
-    | None -> idents_to_types, app_points
-    | Some exp -> process_expression ~exp ~idents_to_types ~app_points
+    | None -> acc
+    | Some exp -> process_expression ~exp acc
     end
   | Texp_sequence (e1, e2)
   | Texp_when (e1, e2)
   | Texp_while (e1, e2) ->
-    let idents_to_types, app_points =
-      process_expression ~exp:e1 ~idents_to_types ~app_points
-    in
-    process_expression ~exp:e2 ~idents_to_types ~app_points
+    let acc = process_expression ~exp:e1 init in
+    process_expression ~exp:e2 acc
   | Texp_for (ident, _, e1, e2, _, e3) ->
     let idents_to_types =
       StringTable.add (Ident.unique_name ident) (e1.exp_type, e1.exp_env)
         idents_to_types
     in
-    let idents_to_types, app_points =
-      process_expression ~exp:e1 ~idents_to_types ~app_points
-    in
-    let idents_to_types, app_points =
-      process_expression ~exp:e2 ~idents_to_types ~app_points
-    in
-    process_expression ~exp:e3 ~idents_to_types ~app_points
+    let acc = process_expression ~exp:e1 (idents_to_types, app_points) in
+    let acc = process_expression ~exp:e2 acc in
+    process_expression ~exp:e3 acc
   | Texp_lazy exp
   | Texp_assert exp
   | Texp_field (exp, _, _) ->
-    process_expression ~exp ~idents_to_types ~app_points
+    process_expression ~exp init
   | Texp_setfield (e1, _, _, e2) ->
-    let idents_to_types, app_points =
-      process_expression ~exp:e1 ~idents_to_types ~app_points
-    in
-    process_expression ~exp:e2 ~idents_to_types ~app_points
+    let acc = process_expression ~exp:e1 init in
+    process_expression ~exp:e2 acc
   | Texp_send (exp, _meth, e_opt) ->
     (* TODO: handle methods *)
-    let idents_to_types, app_points =
-      process_expression ~exp ~idents_to_types ~app_points
-    in
+    let acc = process_expression ~exp init in
     begin match e_opt with
-    | None -> idents_to_types, app_points
-    | Some exp -> process_expression ~exp ~idents_to_types ~app_points
+    | None -> acc
+    | Some exp -> process_expression ~exp acc
     end
   | Texp_letmodule (ident, str_loc, mod_expr, exp) ->
     (* TODO: handle [mod_expr] *)
@@ -175,7 +155,7 @@ and process_expression ~exp ~idents_to_types ~app_points =
         (mod_expr.mod_type, mod_expr.mod_env) idents_to_types
     in
 *)
-    process_expression ~exp ~idents_to_types ~app_points
+    process_expression ~exp init
   (* CR mshinwell: this needs finishing, yuck *)
   | Texp_ident _
   | Texp_constant _
@@ -189,11 +169,9 @@ and process_expression ~exp ~idents_to_types ~app_points =
   | Texp_pack _ -> idents_to_types, app_points
 
 and process_pat_exp_list ~pat_exp_list init =
-  List.fold_left pat_exp_list ~init ~f:(fun (imap, lmap) (pat, exp) ->
-    let idents_to_types, app_points =
-      process_expression ~exp ~idents_to_types:imap ~app_points:lmap
-    in
-    process_pattern ~pat ~idents_to_types, lmap
+  List.fold_left pat_exp_list ~init ~f:(fun acc (pat, exp) ->
+    let idents_to_types, app_points = process_expression ~exp acc in
+    process_pattern ~pat ~idents_to_types, app_points
   )
 
 let process_implementation ~structure ~idents_to_types ~app_points =
