@@ -214,7 +214,19 @@ let load ~filename =
   let idents_to_types, application_points =
     match cmt_infos with
     | None -> String.Map.empty, LocTable.empty
-    | Some cmt_infos -> create_idents_to_types_map ~cmt_infos
+    | Some cmt_infos ->
+      let idents, app_points = create_idents_to_types_map ~cmt_infos in
+      let idents =
+        String.Map.map (fun (type_expr, env) ->
+          type_expr, Env.env_of_only_summary Envaux.env_from_summary_best_effort env
+        ) idents
+      in
+      let app_points =
+        LocTable.map (fun (type_expr, env) ->
+          type_expr, Env.env_of_only_summary Envaux.env_from_summary_best_effort env
+        ) app_points
+      in
+      idents, app_points
   in {
     cmi_infos ;
     cmt_infos ;
