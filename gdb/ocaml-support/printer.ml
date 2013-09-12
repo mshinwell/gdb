@@ -115,12 +115,14 @@ let default_printer ?prefix ~printers out value =
   | None -> Gdb.printf out "tag %d: " (Gdb.Obj.tag value)
   | Some p -> Gdb.printf out "%s " p
   end ;
+  Gdb.print out " (" ;
   for field = 0 to Gdb.Obj.size value - 1 do
     if field > 0 then Gdb.print out ", " ;
     try printers.(field) (Gdb.Obj.field value field)
     with Gdb.Read_error _ ->
       Gdb.printf out "<field %d read failed>" field
-  done
+  done ;
+  Gdb.print out ")"
 
 let list ~print_element out l =
   let printf = Gdb.printf out in
