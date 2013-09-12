@@ -1,3 +1,4 @@
+module Array = ArrayLabels
 module List = ListLabels
 
 module String = struct

@@ -7,7 +7,7 @@ OCAML_LIB=`ocamlc -where`
 CFLAGS='-I .. -I ../common -I ../../include -ggdb'
 OCAMLFLAGS=-I $(OCAML_LIB)/compiler-libs
 SRC=gdb_ocaml_support.c ml_gdb.c std.ml gdb.ml cmt_file.mli cmt_file.ml \
-    gdb_ocaml_support.ml
+    printer.ml gdb_ocaml_support.ml
 TARGET_LIB=libgdb_ocaml_support.so
 
 .PHONY: all
