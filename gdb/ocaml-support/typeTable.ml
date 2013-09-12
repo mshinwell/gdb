@@ -19,4 +19,4 @@ include Hashtbl.Make (struct
     Hashtbl.hash (aux x)
 end)
 
-let table : Types.type_kind t = create 20
+let table : Types.type_declaration t = create 20

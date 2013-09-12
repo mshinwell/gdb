@@ -32,7 +32,12 @@ let extract_constant_ctors ~cases =
 
 let env_find_type ~env ~path =
   try Some (Env.find_type path env)
-  with Not_found -> None
+  with Not_found ->
+    (* Nothing at the env active at that point of the file, but we might have more
+       informations. *)
+  try Some (TypeTable.(find table) path)
+  with Not_found ->
+    None
 
 let print_int out value ~type_of_ident =
   let default () =
