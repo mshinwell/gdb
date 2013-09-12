@@ -22,6 +22,8 @@ type t = {
     ([ `Recover_label_ty of string | `Ty of Types.type_expr ] list * Env.t) LocTable.t
 }
 
+let cache : (string, t) Hashtbl.t = Hashtbl.create 1
+
 let create_null () = {
   cmi_infos = None;
   cmt_infos = None;
@@ -237,12 +239,16 @@ let load ~filename =
         ) app_points
       in
       idents, app_points
-  in {
+  in 
+  let t = {
     cmi_infos ;
     cmt_infos ;
     idents_to_types ;
     application_points ;
   }
+  in
+  Hashtbl.add cache filename t ;
+  t
 
 let type_of_ident t ~unique_name =
   try Some (String.Map.find unique_name t.idents_to_types)
