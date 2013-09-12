@@ -111,16 +111,15 @@ let print_int out value ~type_of_ident =
 (****************************************************************************************)
 
 let default_printer ?prefix ~printers out value =
-  let printf fmt = Gdb.printf out fmt in
   begin match prefix with
-  | None -> printf "tag %d: " (Gdb.Obj.tag value)
-  | Some p -> printf p
+  | None -> Gdb.printf out "tag %d: " (Gdb.Obj.tag value)
+  | Some p -> Gdb.printf out "%s " p
   end ;
   for field = 0 to Gdb.Obj.size value - 1 do
-    if field > 0 then printf ", " ;
+    if field > 0 then Gdb.print out ", " ;
     try printers.(field) (Gdb.Obj.field value field)
     with Gdb.Read_error _ ->
-      printf "<field %d read failed>" field
+      Gdb.printf out "<field %d read failed>" field
   done
 
 let list ~print_element out l =
@@ -179,7 +178,8 @@ let rec identify_value type_expr env =
   | Types.Tsubst _
   | Types.Tunivar _
   | Types.Tpoly _
-  | Types.Tpackage _ -> `Something_else
+  | Types.Tpackage _ ->
+    `Something_else
 
 let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
   if depth > 2 then Gdb.print out ".." else
@@ -253,7 +253,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
                 ~print_sig:false out v
             )
           in
-          default_printer ~printers out v
+          default_printer ~printers ~prefix:(Ident.name cident) out v
         end
     end
   | tag when tag = Gdb.Obj.string_tag ->
