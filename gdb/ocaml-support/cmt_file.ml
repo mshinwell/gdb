@@ -201,6 +201,16 @@ let create_idents_to_types_map ~cmt_infos =
   | Cmt_format.Partial_implementation _
   | Cmt_format.Partial_interface _ -> String.Map.empty, LocTable.empty
   | Cmt_format.Implementation structure ->
+    let () = (* Record all the type definitions known at the end of the file *)
+      match List.rev structure.Typedtree.str_items with
+      | [] -> ()
+      | last_str_item :: _ ->
+        let env_summary = last_str_item.Typedtree.str_env in
+        let env = Envaux.env_of_only_summary env_summary in
+        Env.iter_types (fun _id (path, (type_decl, _type_descrs)) ->
+          TypeTable.(add table) path type_decl.Types.type_kind
+        ) env
+    in
     process_implementation ~structure ~idents_to_types:String.Map.empty
       ~app_points:LocTable.empty
 
