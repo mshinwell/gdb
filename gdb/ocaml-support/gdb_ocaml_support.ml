@@ -119,7 +119,7 @@ let val_print_int ~value ~gdb_stream ~type_of_ident =
 *)
     let rec print_type_expr type_expr =
       match type_expr.Types.desc with
-      | Types.Tconstr (path, [], _abbrev_memo_ref) ->
+      | Types.Tconstr (path, _, _abbrev_memo_ref) ->
         begin match env_find_type ~env ~path with
         | Some type_decl ->
           begin match type_decl.Types.type_kind with
@@ -156,8 +156,6 @@ let val_print_int ~value ~gdb_stream ~type_of_ident =
         Gdb.printf gdb_stream ". -> ."
       | Types.Ttuple _ ->
         Gdb.printf gdb_stream "Tuple"
-      | Types.Tconstr _ ->
-        Gdb.printf gdb_stream "constr"
       | Types.Tobject _ ->
         Gdb.printf gdb_stream "obj"
       | Types.Tfield _ ->

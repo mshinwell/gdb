@@ -41,6 +41,29 @@ gdb_ocaml_support_init (void)
   return 1;
 }
 
+static int
+ocaml_dwarf_type_name_indicates_parameter(const char* name)
+{
+  /* Rudimentary check as to whether [name], a DWARF OCaml type name, indicates
+     that the corresponding identifier is a function parameter. */
+
+  const char* space;
+  const char* underscore;
+  const char* dash;
+
+  /* CR mshinwell: needs improvement */
+
+  space = strrchr(name, ' ');
+  underscore = strrchr(name, '_');
+  dash = strrchr(name, '-');
+
+  if (space < underscore && underscore && dash && underscore < dash) {
+    return 1;
+  }
+
+  return 0;
+}
+
 static void
 ocaml_val_print (value callback,
                  struct type *type, struct symbol *symbol,
@@ -109,18 +132,69 @@ ocaml_val_print (value callback,
      parameter in the selected stack frame.  If so, then attempt to resolve
      the source location of the frame's return address, in order that we can later
      extract the type at which the function (corresponding to the selected frame) was
-     applied. */
+     applied.
+
+     If the return address turns out to lie in the same function as we're in at the
+     moment, then try looking further up the stack, making for the moment the assumption
+     that we don't have polymorphic recursion.
+  */
+  /* CR mshinwell: consider how to handle polymorphic recursion */
   /* CR mshinwell: think harder about whether the non-uniqueness of stamped idents
      across compilation units means we could go wrong here. */
   v_call_point = Val_long(0);  /* Call_point.None */
 
-  /* CR mshinwell: this isn't strictly needed, since we can tell from the mangled name
-     whether the thing is a parameter */
- /* if (symbol && SYMBOL_IS_ARGUMENT(symbol)) { */
+  if (ocaml_dwarf_type_name_indicates_parameter(TYPE_NAME(type))) {
     selected_frame = get_selected_frame_if_set();
-    if (selected_frame) {
+
+    if (selected_frame != NULL) {
       CORE_ADDR return_address;
-      if (frame_unwind_caller_pc_if_available(selected_frame, &return_address)) {
+      CORE_ADDR pc_in_original_selected_frame;
+      struct symbol* original_function;
+      int depth;
+      int stop;
+
+      stop = 0;
+      depth = 0;
+      return_address = 0;
+
+      pc_in_original_selected_frame = get_frame_pc(selected_frame);
+      original_function = find_pc_function(pc_in_original_selected_frame);
+
+      while (!stop && depth++ < 100
+               && original_function != NULL && selected_frame != NULL) {
+        struct symbol* selected_function;
+        CORE_ADDR this_return_address;
+        if (frame_unwind_caller_pc_if_available(selected_frame, &this_return_address)) {
+          selected_function = find_pc_function(this_return_address);
+
+          if (!selected_function) {
+            /* We couldn't find out what function [return_address] lies in.  We'll
+               use the most recent return address we could resolve, if any. */
+            stop = 1;
+          }
+          else if (selected_function != original_function) {
+            /* [selected_frame] returns to an address that is not in the current
+               function; use that return address. */
+            return_address = this_return_address;
+            stop = 1;
+          }
+          else {
+            /* [selected_frame] returns to the current function, so continue searching
+               up the stack. */
+            selected_frame = get_prev_frame(selected_frame);
+            return_address = this_return_address;
+          }
+        }
+        else {
+          /* The return address from [selected_frame] cannot be determined.  We'll use
+             the most recent return address we could resolve, if any. */
+          stop = 1;
+        }
+      }
+
+      /* If we've found a return address, attempt to translate it into a source
+         location. */
+      if (return_address) {
         int line;
         struct symtab_and_line symtab_and_line = find_pc_line(return_address, 0);
         line = symtab_and_line.line;
@@ -136,7 +210,7 @@ ocaml_val_print (value callback,
           Field(v_call_point, 1) = Val_long(line);
         }
       }
-/*    }*/
+    }
   }
 
   /* The printing code itself is written in OCaml. */
