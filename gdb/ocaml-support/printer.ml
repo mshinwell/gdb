@@ -115,7 +115,7 @@ let default_printer ?prefix ~printers out value =
   | None -> Gdb.printf out "tag %d: " (Gdb.Obj.tag value)
   | Some p -> Gdb.printf out "%s " p
   end ;
-  Gdb.print out " (" ;
+  Gdb.print out "(" ;
   for field = 0 to Gdb.Obj.size value - 1 do
     if field > 0 then Gdb.print out ", " ;
     try printers.(field) (Gdb.Obj.field value field)
@@ -163,6 +163,7 @@ let rec identify_value type_expr env =
     begin match env_find_type ~env ~path with
     | None -> `Type_decl_not_found
     | Some type_decl ->
+      let args = List.combine type_decl.Types.type_params args in
       match type_decl.Types.type_kind with
       | Types.Type_variant cases -> `Constructed_value (cases, args)
       | Types.Type_abstract -> `Something_else
@@ -241,7 +242,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
         | Some (cident, _) when Ident.name cident = "::" && List.length args = 1 ->
           let print_element =
             match args with
-            | [ elements_type ] ->
+            | [ (_, elements_type) ] ->
               value ~depth:(succ depth) ~print_sig:false out
                 ~type_of_ident:(Some (elements_type, env))
             | _ -> assert false
@@ -251,6 +252,12 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
           let arg_types = Array.of_list arg_types in
           let printers =
             Array.map arg_types ~f:(fun ty v ->
+              let ty =
+                try List.assoc ty args
+                with Not_found ->
+                  (* Either [ty] wasn't a type variable, or it's an existencial. *)
+                  ty 
+              in
               value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
                 ~print_sig:false out v
             )
