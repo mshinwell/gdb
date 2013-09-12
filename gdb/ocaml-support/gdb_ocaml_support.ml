@@ -183,7 +183,7 @@ let rec val_print ~depth v out ~type_of_ident ~don't_print_type = (* CR mshinwel
     else begin
       if Gdb.Obj.is_block v then
       begin match Gdb.Obj.tag v with
-        | tag when tag < Gdb.Obj.closure_tag  ->
+        | tag when tag < Gdb.Obj.lazy_tag ->
           begin
             let print_list v ~type_of_elements =
               Gdb.print out "[";
