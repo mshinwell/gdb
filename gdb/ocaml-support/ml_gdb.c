@@ -1,6 +1,18 @@
 #include <caml/memory.h>
 #include "ml_utils.h"
 
+extern char* source_path;
+
+value ml_gdb_get_path (value unit)
+{
+    CAMLparam1 (unit) ;
+    CAMLlocal1 (str) ;
+
+    str = caml_copy_string (source_path);
+
+    CAMLreturn (str) ;
+}
+
 value ml_gdb_target_read_memory (value core_addr, value buf, value len)
 {
   CAMLparam3(core_addr, buf, len);
