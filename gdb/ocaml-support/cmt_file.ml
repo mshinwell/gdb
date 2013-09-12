@@ -208,7 +208,9 @@ let create_idents_to_types_map ~cmt_infos =
       | [] -> ()
       | last_str_item :: _ ->
         let env_summary = last_str_item.Typedtree.str_env in
-        let env = Envaux.env_of_only_summary env_summary in
+        let env =
+          Env.env_of_only_summary Envaux.env_from_summary_best_effort env_summary
+        in
         Env.iter_types (fun _id (path, (type_decl, _type_descrs)) ->
           TypeTable.(add table) path type_decl
         ) env

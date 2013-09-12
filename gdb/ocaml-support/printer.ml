@@ -37,6 +37,8 @@ let env_find_type ~env ~path =
        informations. *)
   try Some (TypeTable.(find table) path)
   with Not_found ->
+    (* We don't know about that type declaration yet, but we might find it in the
+       appropriate cmt file. *)
     None
 
 let print_int out value ~type_of_ident =
