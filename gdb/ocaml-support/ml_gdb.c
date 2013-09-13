@@ -3,14 +3,25 @@
 
 extern char* source_path;
 
-value ml_gdb_get_path (value unit)
+value ml_gdb_find_in_path (value str)
 {
-    CAMLparam1 (unit) ;
-    CAMLlocal1 (str) ;
+    CAMLparam1 (str) ;
+    CAMLlocal2 (opt, path_str) ;
 
-    str = caml_copy_string (source_path);
+    const char *filename = String_val (str) ;
 
-    CAMLreturn (str) ;
+    char *full_path;
+    source_full_path_of (filename, &full_path) ;
+
+    if (!full_path) {
+        opt = Val_int (0) ;
+    } else {
+        path_str = caml_copy_string (full_path) ;
+        opt = caml_alloc(1, 0);
+        Store_field (opt, 0, path_str) ;
+    }
+
+    CAMLreturn (opt) ;
 }
 
 value ml_gdb_target_read_memory (value core_addr, value buf, value len)

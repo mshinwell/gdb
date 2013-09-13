@@ -4,7 +4,7 @@ type gdb_stream
 
 module Priv = struct
   (* GDB primitive functions *)
-  external get_path : unit -> string = "ml_gdb_get_path"
+  external find_in_path : string -> string option = "ml_gdb_find_in_path"
 
   external target_read_memory 
     : addr -> string -> int -> int 
@@ -148,7 +148,3 @@ module Target_obj = struct
 end
 
 module Obj = Target_obj
-
-let get_source_path () =
-  let str = Priv.get_path () in
-  Misc.split str ':'
