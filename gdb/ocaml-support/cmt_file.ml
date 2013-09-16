@@ -203,6 +203,7 @@ let create_idents_to_types_map ~cmt_infos =
   | Cmt_format.Partial_implementation _
   | Cmt_format.Partial_interface _ -> String.Map.empty, LocTable.empty
   | Cmt_format.Implementation structure ->
+(*
     let () = (* Record all the type definitions known at the end of the file *)
       match List.rev structure.Typedtree.str_items with
       | [] -> ()
@@ -215,6 +216,7 @@ let create_idents_to_types_map ~cmt_infos =
           TypeTable.(add table) path type_decl
         ) env
     in
+*)
     process_implementation ~structure ~idents_to_types:String.Map.empty
       ~app_points:LocTable.empty
 
@@ -229,6 +231,8 @@ let load ~filename =
     match cmt_infos with
     | None -> String.Map.empty, LocTable.empty
     | Some cmt_infos ->
+      (* restore load path. *)
+      let _ = Config.load_path := cmt_infos.Cmt_format.cmt_loadpath @ !Config.load_path in
       let idents, app_points = create_idents_to_types_map ~cmt_infos in
       let idents =
         String.Map.map (fun (type_expr, env) ->

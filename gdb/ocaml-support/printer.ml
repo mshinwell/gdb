@@ -30,19 +30,8 @@ let extract_constant_ctors ~cases =
   in
   constant_ctors
 
-let rec env_find_type ~env ~path =
-  try Some (Env.find_type path env) with Not_found ->
-  (* Nothing at the env active at that point of the file, but we might have more
-     information. *)
-  try Some (TypeTable.(find table) path) with Not_found ->
-  (* We don't know about that type declaration yet, but we might find it in the
-     appropriate cmt file. *)
-  let fname = Path.last path ^ ".cmt" in
-  match Gdb.Priv.find_in_path (String.uncapitalize fname) with
-  | None -> None
-  | Some filename ->
-    let _ = Cmt_file.load ~filename in
-    env_find_type ~env ~path
+let env_find_type ~env ~path =
+  try Some (Env.find_type path env) with Not_found -> None
 
 let print_int out value ~type_of_ident =
   let default () =
