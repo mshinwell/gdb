@@ -192,8 +192,6 @@ let process_implementation ~structure ~idents_to_types ~app_points =
           | Typedtree.Tstr_include _ -> idents_to_types, app_points)
 
 let create_idents_to_types_map ~cmt_infos =
-  (* CR mshinwell: needs to keep track of the environment, to resolve
-      [Path.t]s *)
   let cmt_annots = cmt_infos.Cmt_format.cmt_annots in
   match cmt_annots with
   | Cmt_format.Packed _
@@ -203,20 +201,6 @@ let create_idents_to_types_map ~cmt_infos =
   | Cmt_format.Partial_implementation _
   | Cmt_format.Partial_interface _ -> String.Map.empty, LocTable.empty
   | Cmt_format.Implementation structure ->
-(*
-    let () = (* Record all the type definitions known at the end of the file *)
-      match List.rev structure.Typedtree.str_items with
-      | [] -> ()
-      | last_str_item :: _ ->
-        let env_summary = last_str_item.Typedtree.str_env in
-        let env =
-          Env.env_of_only_summary Envaux.env_from_summary_best_effort env_summary
-        in
-        Env.iter_types (fun _id (path, (type_decl, _type_descrs)) ->
-          TypeTable.(add table) path type_decl
-        ) env
-    in
-*)
     process_implementation ~structure ~idents_to_types:String.Map.empty
       ~app_points:LocTable.empty
 
@@ -231,17 +215,26 @@ let load ~filename =
     match cmt_infos with
     | None -> String.Map.empty, LocTable.empty
     | Some cmt_infos ->
-      (* restore load path. *)
-      let _ = Config.load_path := cmt_infos.Cmt_format.cmt_loadpath @ !Config.load_path in
+      let () =
+        (* restores load path: that needs to be done before calling
+           [Env.env_of_only_summary] otherwise an exception will be thrown when
+           trying to open "distant" modules.
+           By restoring the load_path used when compiling this file [Env] then
+           knows where to find such "distant" modules. *)
+        (* CR trefis: do we really want to concat with [!Config.load_path] here?
+           There might be garbage in it (and we restore it when we're done, so it's
+           *really* likely there will be garbage in it). *)
+        Config.load_path := cmt_infos.Cmt_format.cmt_loadpath @ !Config.load_path
+      in
       let idents, app_points = create_idents_to_types_map ~cmt_infos in
       let idents =
         String.Map.map (fun (type_expr, env) ->
-          type_expr, Env.env_of_only_summary Envaux.env_from_summary_best_effort env
+          type_expr, Env.env_of_only_summary Envaux.env_from_summary env
         ) idents
       in
       let app_points =
         LocTable.map (fun (type_expr, env) ->
-          type_expr, Env.env_of_only_summary Envaux.env_from_summary_best_effort env
+          type_expr, Env.env_of_only_summary Envaux.env_from_summary env
         ) app_points
       in
       idents, app_points
