@@ -158,7 +158,11 @@ let rec identify_value type_expr env =
       let args = List.combine type_decl.Types.type_params args in
       match type_decl.Types.type_kind with
       | Types.Type_variant cases -> `Constructed_value (cases, args)
-      | Types.Type_abstract -> `Something_else
+      | Types.Type_abstract ->
+        begin match type_decl.Types.type_manifest with
+        | None -> `Something_else
+        | Some ty -> identify_value ty env
+        end
       | Types.Type_record (field_decls, record_repr) ->
         `Record (field_decls, record_repr)
     end
