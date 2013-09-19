@@ -171,25 +171,41 @@ and process_pat_exp_list ~pat_exp_list init =
     process_pattern ~pat ~idents_to_types, app_points
   )
 
-let process_implementation ~structure ~idents_to_types ~app_points =
+let rec process_module_expr ~mod_expr ((idents_to_types, app_points) as maps) =
+  let open Typedtree in
+  match mod_expr.mod_desc with
+  | Tmod_ident _ -> maps
+  | Tmod_structure structure ->
+    process_implementation ~structure ~idents_to_types ~app_points
+  | Tmod_constraint (mod_expr, _, _, _)
+  | Tmod_functor (_, _, _, mod_expr) ->
+    process_module_expr ~mod_expr maps
+  | Tmod_apply (me1, me2, _) ->
+    let maps = process_module_expr ~mod_expr:me1 maps in
+    process_module_expr ~mod_expr:me2 maps
+  | Tmod_unpack (_expr, _) -> (* TODO *) maps
+
+and process_implementation ~structure ~idents_to_types ~app_points =
   List.fold_left structure.Typedtree.str_items
     ~init:(idents_to_types, app_points)
-    ~f:(fun (idents_to_types, app_points) str_item ->
+    ~f:(fun maps str_item ->
           match str_item.Typedtree.str_desc with
           | Typedtree.Tstr_value (_rec, pat_exp_list) ->
-            process_pat_exp_list ~pat_exp_list (idents_to_types, app_points)
-          | Typedtree.Tstr_eval _
+            process_pat_exp_list ~pat_exp_list maps
+          | Typedtree.Tstr_eval exp ->
+            process_expression ~exp maps
+          | Typedtree.Tstr_module (_id, _loc, mod_expr) ->
+            process_module_expr ~mod_expr maps
           | Typedtree.Tstr_primitive _
           | Typedtree.Tstr_type _
           | Typedtree.Tstr_exception _
           | Typedtree.Tstr_exn_rebind _
-          | Typedtree.Tstr_module _
           | Typedtree.Tstr_recmodule _
           | Typedtree.Tstr_modtype _
           | Typedtree.Tstr_open _
           | Typedtree.Tstr_class _
           | Typedtree.Tstr_class_type _
-          | Typedtree.Tstr_include _ -> idents_to_types, app_points)
+          | Typedtree.Tstr_include _ -> maps)
 
 let create_idents_to_types_map ~cmt_infos =
   let cmt_annots = cmt_infos.Cmt_format.cmt_annots in
