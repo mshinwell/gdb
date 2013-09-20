@@ -196,11 +196,15 @@ and process_implementation ~structure ~idents_to_types ~app_points =
             process_expression ~exp maps
           | Typedtree.Tstr_module (_id, _loc, mod_expr) ->
             process_module_expr ~mod_expr maps
+          | Typedtree.Tstr_recmodule lst ->
+            List.fold_left lst ~init:(idents_to_types, app_points) ~f:(
+              fun maps (_id, _loc, _mod_type, mod_expr) ->
+                process_module_expr ~mod_expr maps
+            )
           | Typedtree.Tstr_primitive _
           | Typedtree.Tstr_type _
           | Typedtree.Tstr_exception _
           | Typedtree.Tstr_exn_rebind _
-          | Typedtree.Tstr_recmodule _
           | Typedtree.Tstr_modtype _
           | Typedtree.Tstr_open _
           | Typedtree.Tstr_class _
