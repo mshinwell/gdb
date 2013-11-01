@@ -36,7 +36,7 @@
 
 extern const struct exp_descriptor exp_descriptor_c;
 
-static const char* OCAML_MAIN = "caml_program";
+const char* OCAML_MAIN = "caml_program";
 
 const char*
 ocaml_main_name (void)
@@ -44,8 +44,9 @@ ocaml_main_name (void)
   struct minimal_symbol* msym;
 
   msym = lookup_minimal_symbol (OCAML_MAIN, NULL, NULL);
-  if (msym != NULL)
+  if (msym != NULL) {
     return OCAML_MAIN;
+}
 
   /* No known entry procedure found, the main program is probably not OCaml.  */
   return NULL;
@@ -63,73 +64,9 @@ is_all_digits_after(char* chr)
 }
 
 char*
-ocaml_demangle_cversion(const char* mangled, int options)
-{
-  char* demangled;
-  int index;
-  int output_index;
-  int mangled_length;
-  char* last_underscore;
-
-  demangled = XNEWVEC(char, strlen(mangled) + 1);
-
-  mangled_length = strlen(mangled);
-
-  output_index = 0;
-  if (strncmp(mangled, "caml", 4) != 0
-        || mangled_length < 5
-        || !isupper(mangled[4])
-        || strstr(mangled, "constant__symbol__")) {
-    strcpy(demangled, mangled);
-  }
-  else {
-    last_underscore = strrchr(mangled, '_');
-    if (last_underscore
-/*          && (*(last_underscore - 1) == '_')*/
-          && (/*!strcmp(last_underscore + 1, "entry")
-                ||*/ !strcmp(last_underscore + 1, "frametable")
-                || !strcmp(last_underscore + 1, "begin")
-                || !strcmp(last_underscore + 1, "end"))) {
-      strcpy(demangled, mangled);
-    }
-    else {
-      for (index = 4; index < mangled_length; index++) {
-        if (index > 4 &&
-              index < mangled_length - 1
-              && mangled[index] == '_' && mangled[index + 1] == '_') {
-          demangled[output_index] = '.';
-          index++;
-        }
-        else {
-          demangled[output_index] = mangled[index];
-        }
-
-        output_index++;
-      }
-
-      demangled[output_index] = '\0';
-    }
-
-    if (!strstr(mangled, "__anonfun_")) {
-      char* last_underscore = strrchr(demangled, '_');
-      if (last_underscore && is_all_digits_after(last_underscore)) {
-        *last_underscore = '\0';
-      }
-    }
-  }
-
-  return demangled;
-}
-
-char*
 ocaml_demangle (const char* mangled, int options)
 {
-  char* unmangled = ocaml_support_demangle (mangled, options);
-
-  if (unmangled)
-      return unmangled;
-  else
-      return ocaml_demangle_cversion(mangled, options);
+  return ocaml_support_demangle (mangled, options);
 }
 
 typedef unsigned long long value;
@@ -394,6 +331,21 @@ ocaml_language_arch_info(struct gdbarch* gdbarch,
   lai->bool_type_default = builtin->builtin_bool;
 }
 
+static char *
+ocaml_word_break_characters (void)
+{
+  /* CR mshinwell: should maybe remove some more chars.  ( and ) in particular might
+     appear---for infix operators---but who knows what removing them from here does. */
+  return " \t\n!@#$%^&*()+=|~`}{[]\"';:?/><,-";
+}
+
+static VEC (char_ptr) *
+ocaml_make_symbol_completion_list (char *text, char *word, enum type_code code)
+{
+  /* The "." ensures that tab completion works correctly on demanged OCaml symbols. */
+  return default_make_symbol_completion_list_break_on (text, word, ".", code);
+}
+
 const struct language_defn ocaml_language_defn =
 {
   "ocaml",			/* Language name */
@@ -424,8 +376,8 @@ const struct language_defn ocaml_language_defn =
   c_op_print_tab,		/* expression operators for printing */
   1,				/* c-style arrays */
   0,				/* String lower bound */
-  default_word_break_characters,
-  default_make_symbol_completion_list,
+  ocaml_word_break_characters,
+  ocaml_make_symbol_completion_list,
   ocaml_language_arch_info,
   default_print_array_index,
   default_pass_by_reference,
@@ -465,7 +417,6 @@ builtin_ocaml_type (struct gdbarch *gdbarch)
   return gdbarch_data (gdbarch, ocaml_type_data);
 }
 
-/* Provide a prototype to silence -Wmissing-prototypes.  */
 extern initialize_file_ftype _initialize_ocaml_language;
 
 void

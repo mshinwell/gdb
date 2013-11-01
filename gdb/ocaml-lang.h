@@ -5,6 +5,8 @@
 #include "symtab.h"
 #include "value.h"
 
+extern const char* OCAML_MAIN;
+
 struct builtin_ocaml_type
 {
   struct type* builtin_unit;

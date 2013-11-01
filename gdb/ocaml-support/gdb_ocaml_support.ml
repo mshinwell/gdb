@@ -181,55 +181,6 @@ let val_print addr stream ~dwarf_type ~call_site =
 
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
 
-let demangle mangled =
-  if
-    String.is_suffix mangled ~suffix:"__frametable" ||
-    String.is_suffix mangled ~suffix:"__begin" ||
-    String.is_suffix mangled ~suffix:"__end"
-  then
-    mangled
-  else
-    let str = String.copy mangled in
-    let rec loop i j =
-      if j >= String.length str then
-        i
-      else if str.[j] = '_' && j + 1 < String.length str && str.[j + 1] = '_' then (
-        (* So, here is the funny part: there's no way to distinguish between "__" inserted
-            by [Compilenv.make_symbol] (see asmcomp/compilenv.ml) and names containing
-            "__".
-            We are just going to assume that people never use "__" in their name (although
-            we know for a fact that this happens in Core.) *)
-        (* CR mshinwell: fix the above *)
-        str.[i] <- '.' ;
-        loop (i + 1) (j + 2)
-      ) else (
-        str.[i] <- str.[j] ;
-        loop (i + 1) (j + 1)
-      )
-    in
-    let len = loop 0 0 in
-    String.sub str ~pos:0 ~len
-
-let demangle mangled_name =
-  let is_caml_name =
-    String.length mangled_name > 4 &&
-    String.is_prefix mangled_name ~prefix:"caml" &&
-    (* Beware: really naive *)
-    mangled_name.[4] <> '_' &&
-    mangled_name.[4] = (Char.uppercase mangled_name.[4])
-  in
-  let maybe_stamped =
-    if not is_caml_name then mangled_name else
-    demangle (String.sub mangled_name ~pos:4 ~len:(String.length mangled_name - 4))
-  in
-  let unstamped = String.drop_stamp maybe_stamped in
-  if String.is_suffix unstamped ~suffix:"anon_fun" then
-    maybe_stamped
-  else
-    unstamped
-
-let () = Callback.register "gdb_ocaml_support_demangle" demangle
-
 let print_type ~dwarf_type ~out =
   let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
   (* CR mshinwell: we can share some of this code with above. *)

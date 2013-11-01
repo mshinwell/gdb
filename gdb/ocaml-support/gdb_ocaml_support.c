@@ -265,10 +265,13 @@ gdb_ocaml_support_demangle (char* mangled, int options)
          error: called object ‘caml_callback’ is not a function
     */
     caml_res = caml_callback (*cb, caml_mangled);
-    res = strdup (String_val(caml_res));
+
+    if (Is_block(caml_res)) {
+      gdb_assert(Tag_val(caml_res) == 0 && Wosize_val(caml_res) == 1);
+      res = strdup (String_val(Field(caml_res, 0)));
+    }
   }
 
-  /* CR mshinwell: is returning [NULL] acceptable?  (We might...) */
   CAMLreturnT (char*, res);
 }
 
