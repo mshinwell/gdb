@@ -256,7 +256,10 @@ let load ~filename =
           | dirname -> [dirname]
         in
         Config.load_path :=
-          cmt_infos.Cmt_format.cmt_loadpath (* @ !Config.load_path *) @ extra_load_path
+          cmt_infos.Cmt_format.cmt_loadpath (* @ !Config.load_path *) @ extra_load_path;
+        if debug then
+          Printf.printf "the load path will be: %s\n%!"
+            (String.concat !Config.load_path ~sep:":")
       in
       let idents, app_points = create_idents_to_types_map ~cmt_infos in
       try
