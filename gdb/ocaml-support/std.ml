@@ -26,6 +26,7 @@ module String = struct
     try sub str ~pos:0 ~len:(length str - n)
     with _ -> ""
 
+  (* CR mshinwell: this function does not belong in this module *)
   (* Examples of stamped names:
         x_1024     variable, Ident.t unique name x/1024
         x_1024-0   first function argument, Ident.t unique name x/1024

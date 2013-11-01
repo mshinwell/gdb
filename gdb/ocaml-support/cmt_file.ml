@@ -1,5 +1,7 @@
 open Std
 
+let debug = false
+
 module LocTable = Map.Make (struct
   type t = Location.t
   let compare x y =
@@ -225,6 +227,7 @@ let create_idents_to_types_map ~cmt_infos =
       ~app_points:LocTable.empty
 
 let load ~filename =
+  if debug then Printf.printf "attempting to load cmt file: %s\n%!" filename;
   let cmi_infos, cmt_infos =
     try
       Cmt_format.read filename
@@ -236,28 +239,44 @@ let load ~filename =
     | None -> String.Map.empty, LocTable.empty
     | Some cmt_infos ->
       let () =
-        (* restores load path: that needs to be done before calling
+        (* restores load path: needs to be done before calling
            [Env.env_of_only_summary] otherwise an exception will be thrown when
            trying to open "distant" modules.
            By restoring the load_path used when compiling this file [Env] then
            knows where to find such "distant" modules. *)
         (* CR trefis: do we really want to concat with [!Config.load_path] here?
            There might be garbage in it (and we restore it when we're done, so it's
-           *really* likely there will be garbage in it). *)
-        Config.load_path := cmt_infos.Cmt_format.cmt_loadpath @ !Config.load_path
+           *really* likely there will be garbage in it).
+
+           mshinwell: temporarily commented out
+        *)
+        let extra_load_path =
+          match Filename.dirname filename with
+          | "" -> []
+          | dirname -> [dirname]
+        in
+        Config.load_path :=
+          cmt_infos.Cmt_format.cmt_loadpath (* @ !Config.load_path *) @ extra_load_path
       in
       let idents, app_points = create_idents_to_types_map ~cmt_infos in
-      let idents =
-        String.Map.map (fun (type_expr, env) ->
-          type_expr, Env.env_of_only_summary Envaux.env_from_summary env
-        ) idents
-      in
-      let app_points =
-        LocTable.map (fun (type_expr, env) ->
-          type_expr, Env.env_of_only_summary Envaux.env_from_summary env
-        ) app_points
-      in
-      idents, app_points
+      try
+        let idents =
+          String.Map.map (fun (type_expr, env) ->
+            type_expr, Env.env_of_only_summary Envaux.env_from_summary env
+          ) idents
+        in
+        let app_points =
+          LocTable.map (fun (type_expr, env) ->
+            type_expr, Env.env_of_only_summary Envaux.env_from_summary env
+          ) app_points
+        in
+        idents, app_points
+      with exn -> begin
+        if debug then
+          Printf.printf "exception whilst reading cmt file(s): %s\n%!"
+            (Printexc.to_string exn);
+        String.Map.empty, LocTable.empty
+      end
   in 
   let t = {
     cmi_infos ;

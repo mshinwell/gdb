@@ -21,6 +21,8 @@
 (* CR mshinwell: transition to using [Core_kernel] *)
 open Std
 
+let debug = false
+
 let strip_parameter_index_from_unique_name unique_name =
   match try Some (String.rindex unique_name '-') with Not_found -> None with
   | None -> unique_name
@@ -131,6 +133,7 @@ let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site =
   in
   Printer.value ~depth ~print_sig:true ~type_of_ident out v
 
+(* CR mshinwell: bad function name *)
 let decode_dwarf_type dwarf_type =
   (* CR mshinwell: use [Core_kernel] and rewrite with sensible string
      functions *)
@@ -171,12 +174,11 @@ let cmt_file_of_source_file_path ~source_file_path =
 let val_print addr stream ~dwarf_type ~call_site =
   let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
   let cmt_file = cmt_file_of_source_file_path ~source_file_path in
-(*
-  begin match call_site with
-  | Call_site.None -> Printf.printf "no call point info\n%!"
-  | Call_site.Some (file, line) -> Printf.printf "call point: %s:%d\n%!" file line
+  if debug then begin
+    match call_site with
+    | Call_site.None -> Printf.printf "no call point info\n%!"
+    | Call_site.Some (file, line) -> Printf.printf "call point: %s:%d\n%!" file line
   end;
-*)
   val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file ~call_site
 
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
