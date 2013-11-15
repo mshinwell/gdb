@@ -141,6 +141,8 @@ let default_printer ?prefix ~force_never_like_list ~printers out value =
   else begin
     begin match prefix with
     | None -> Gdb.printf out "tag %d: " (Gdb.Obj.tag value)
+    (* CR mshinwell: remove dreadful hack *)
+    | Some "XXX" -> ()
     | Some p -> Gdb.printf out "%s " p
     end;
     Gdb.print out "(";
@@ -231,8 +233,8 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary out v =
         )
       )
     in
-    (* CR mshinwell: [force_never_like_list] is a hack, introduced to get printing of
-       non-constant constructors correct. *)
+    (* CR mshinwell: [force_never_like_list] is a hack.  Seems like the list guessing
+       should only be applied in a couple of cases, so maybe invert the flag? *)
     let default_printer ?(force_never_like_list = false) ?prefix ~printers out v =
       match default_printer ?prefix ~force_never_like_list ~printers out v with
       | `Done -> ()
@@ -273,7 +275,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary out v =
                 ~type_of_ident:(Some (ty, env)) ~summary out v
             )
           in
-          default_printer ~printers out v
+          default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true out v
       | `Record (path, args, field_decls, record_repr) ->
         let field_decls = Array.of_list field_decls in
         if Array.length field_decls <> Gdb.Obj.size v then
@@ -337,8 +339,6 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary out v =
             let printers =
               Array.map arg_types ~f:(fun ty v ->
                 let ty =
-                  (* CR mshinwell: not sure this is correct.  Look at pat_expr_list
-                     in Translcore.transl_let. *)
                   try List.assoc ty args
                   with Not_found ->
                     (* Either [ty] wasn't a type variable, or it's an existential. *)
