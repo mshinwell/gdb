@@ -31,6 +31,7 @@
 #include "ocaml-lang.h"
 #include "ocaml-support.h"
 #include "target.h"
+#include "valprint.h"
 
 #include <ctype.h>
 

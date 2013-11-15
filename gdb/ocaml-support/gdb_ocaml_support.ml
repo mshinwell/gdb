@@ -21,7 +21,7 @@
 (* CR mshinwell: transition to using [Core_kernel] *)
 open Std
 
-let debug = false
+let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
 
 let strip_parameter_index_from_unique_name unique_name =
   match try Some (String.rindex unique_name '-') with Not_found -> None with
@@ -88,7 +88,7 @@ module Call_site = struct
 end
 
 (* CR mshinwell: there are THREE functions by the name of [val_print] now *)
-let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site =
+let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site ~summary =
   let type_of_ident =
     match symbol_linkage_name with
     | None -> None
@@ -109,6 +109,8 @@ let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site =
         match call_site with
         | Call_site.None -> fallback
         | Call_site.Some (source_file, line_number) ->
+          if debug then
+            Printf.printf "call site info: file %s, line %d\n%!" source_file line_number;
           let from_call_site =
             Cmt_file.find_argument_types cmt_file
               ~source_file_of_call_site:source_file
@@ -120,18 +122,24 @@ let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site =
             match parameter_index_of_unique_name symbol_linkage_name with
             | None -> fallback
             | Some parameter_index ->
+              if debug then
+                Printf.printf "'%s': parameter index %d: "
+                  symbol_linkage_name parameter_index;
               if parameter_index < 0 || parameter_index >= List.length type_exprs then
                 fallback
               else
                 match (Array.of_list type_exprs).(parameter_index) with
-                | `Ty type_expr -> Some (type_expr, env)
+                | `Ty type_expr ->
+                  if debug then Printf.printf "found type.\n%!";
+                  Some (type_expr, env)
                 | `Recover_label_ty label ->
                   (* CR mshinwell: need to fix this.  Unfortunately [label] is not
                      stamped, which might make it troublesome to find the correct
                      identifier. *)
+                  if debug then Printf.printf "using fallback.\n%!";
                   fallback
   in
-  Printer.value ~depth ~print_sig:true ~type_of_ident out v
+  Printer.value ~depth ~print_sig:true ~type_of_ident ~summary out v
 
 (* CR mshinwell: bad function name *)
 let decode_dwarf_type dwarf_type =
@@ -171,7 +179,7 @@ let cmt_file_of_source_file_path ~source_file_path =
     else
       Cmt_file.create_null ()
 
-let val_print addr stream ~dwarf_type ~call_site =
+let val_print addr stream ~dwarf_type ~call_site ~summary =
   let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
   let cmt_file = cmt_file_of_source_file_path ~source_file_path in
   if debug then begin
@@ -179,27 +187,31 @@ let val_print addr stream ~dwarf_type ~call_site =
     | Call_site.None -> Printf.printf "no call point info\n%!"
     | Call_site.Some (file, line) -> Printf.printf "call point: %s:%d\n%!" file line
   end;
-  val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file ~call_site
+  val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file ~call_site ~summary
 
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
 
 let print_type ~dwarf_type ~out =
   let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
-  (* CR mshinwell: we can share some of this code with above. *)
+  (* CR mshinwell: we can share some of this code with above.
+     mshinwell: MUST not can *)
   let status =
     match symbol_linkage_name with
     | None ->
-      Printf.printf "print_type: can't find symbol linkage name\n%!";
+      if debug then
+        Printf.printf "print_type: can't find symbol linkage name\n%!";
       `Unknown
     | Some symbol_linkage_name ->
-      Printf.printf "print_type: linkage name='%s'\n%!" symbol_linkage_name;
+      if debug then
+        Printf.printf "print_type: linkage name='%s'\n%!" symbol_linkage_name;
       let cmt_file = cmt_file_of_source_file_path ~source_file_path in
       let type_of_ident =
         Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name
       in
       match type_of_ident with
       | None ->
-        Printf.printf "print_type: '%s' not found in cmt\n%!" symbol_linkage_name;
+        if debug then
+          Printf.printf "print_type: '%s' not found in cmt\n%!" symbol_linkage_name;
         `Unknown
       | Some (type_expr, _env) -> `Ok type_expr
   in
@@ -211,6 +223,7 @@ let print_type ~dwarf_type ~out =
         (fun str pos len -> Gdb.print out (String.sub str pos len))
         (fun () -> ())
     in
+    Printtyp.reset_and_mark_loops type_expr;
     Printtyp.type_expr formatter type_expr;
     Format.pp_print_flush formatter ()
 

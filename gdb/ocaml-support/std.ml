@@ -49,3 +49,5 @@ module String = struct
   end)
 end
 
+let fst3 (a, _b, _c) = a
+let trd3 (_a, _b, c) = c

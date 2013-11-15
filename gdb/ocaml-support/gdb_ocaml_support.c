@@ -28,6 +28,7 @@
 #include "gdb_ocaml_support.h"
 #include "ml_utils.h"
 #include "../symtab.h"
+#include "../valprint.h"
 
 #include <string.h>
 
@@ -76,7 +77,7 @@ ocaml_val_print (value callback,
 {
   CAMLparam0();
   CAMLlocal3(v_type, v_call_point_source_file, v_call_point);
-  CAMLlocalN(args, 4);
+  CAMLlocalN(args, 5);
   struct frame_info* selected_frame;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
 
@@ -219,7 +220,8 @@ ocaml_val_print (value callback,
   args[1] = Val_ptr (stream);
   args[2] = v_type;
   args[3] = v_call_point;
-  (void) caml_callbackN (callback, 4, args);
+  args[4] = Val_bool(options->summary);
+  (void) caml_callbackN (callback, 5, args);
 
   CAMLreturn0;
 }

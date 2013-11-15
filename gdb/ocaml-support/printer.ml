@@ -1,6 +1,25 @@
+(***********************************************************************)
+(*                                                                     *)
+(*                 Debugger support library for OCaml                  *)
+(*                                                                     *)
+(*  Copyright 2013, Jane Street Holding                                *)
+(*                                                                     *)
+(*  Licensed under the Apache License, Version 2.0 (the "License");    *)
+(*  you may not use this file except in compliance with the License.   *)
+(*  You may obtain a copy of the License at                            *)
+(*                                                                     *)
+(*      http://www.apache.org/licenses/LICENSE-2.0                     *)
+(*                                                                     *)
+(*  Unless required by applicable law or agreed to in writing,         *)
+(*  software distributed under the License is distributed on an        *)
+(*  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,       *)
+(*  either express or implied.  See the License for the specific       *)
+(*  language governing permissions and limitations under the License.  *)
+(*                                                                     *)
+(***********************************************************************)
+
 open Std
 
-(****************************************************************************************)
 let extract_non_constant_ctors ~cases =
   let non_constant_ctors, _ =
     List.fold_left cases
@@ -41,7 +60,7 @@ let print_int out value ~type_of_ident =
   match type_of_ident with
   | None ->
     default ();
-    Gdb.printf out " [*]"
+    Gdb.printf out "[?]"
   | Some (type_expr, env) ->
     let rec print_type_expr type_expr =
       match type_expr.Types.desc with
@@ -77,7 +96,8 @@ let print_int out value ~type_of_ident =
       | Types.Tvariant row_desc ->
         Gdb.printf out "Tvariant"
       | Types.Tvar _ ->
-        Gdb.printf out "Tvar"
+        default ();
+        Gdb.printf out "[?]"
       | Types.Tarrow _ ->
         Gdb.printf out ". -> ."
       | Types.Ttuple _ ->
@@ -100,21 +120,38 @@ let print_int out value ~type_of_ident =
     in
     print_type_expr type_expr
 
-(****************************************************************************************)
+let rec value_looks_like_list value =
+  if Gdb.Obj.is_int value && Gdb.Obj.int value = 0 (* nil *) then
+    true
+  else
+    if (not (Gdb.Obj.is_int value))
+       && Gdb.Obj.is_block value
+       && Gdb.Obj.size value = 2
+    then
+      value_looks_like_list (Gdb.Obj.field value 1)
+    else
+      false
 
 let default_printer ?prefix ~printers out value =
-  begin match prefix with
-  | None -> Gdb.printf out "tag %d: " (Gdb.Obj.tag value)
-  | Some p -> Gdb.printf out "%s " p
-  end ;
-  Gdb.print out "(" ;
-  for field = 0 to Gdb.Obj.size value - 1 do
-    if field > 0 then Gdb.print out ", " ;
-    try printers.(field) (Gdb.Obj.field value field)
-    with Gdb.Read_error _ ->
-      Gdb.printf out "<field %d read failed>" field
-  done ;
-  Gdb.print out ")"
+  (* See if the value looks like a list.  If it does, then print it as a list; it seems
+     far more likely to be one of those than a set of nested pairs. *)
+  if value_looks_like_list value then
+    `Looks_like_list
+  else begin
+    begin match prefix with
+    | None -> Gdb.printf out "tag %d: " (Gdb.Obj.tag value)
+    | Some p -> Gdb.printf out "%s " p
+    end;
+    Gdb.print out "(";
+    for field = 0 to Gdb.Obj.size value - 1 do
+      if field > 0 then Gdb.print out ", ";
+      try printers.(field) (Gdb.Obj.field value field)
+      with Gdb.Read_error _ ->
+        Gdb.printf out "<field %d read failed>" field
+    done;
+    Gdb.print out ")";
+    `Done
+  end
 
 let list ~print_element out l =
   let printf = Gdb.printf out in
@@ -123,7 +160,7 @@ let list ~print_element out l =
       try
         let elt = Gdb.Obj.field v 0 in
         let next = Gdb.Obj.field v 1 in
-        print_element elt ;
+        print_element elt;
         if Gdb.Obj.is_block next then printf "; ";
         aux next
       with Gdb.Read_error _ ->
@@ -135,19 +172,19 @@ let list ~print_element out l =
 let record ~fields_helpers out r =
   let printf fmt = Gdb.printf out fmt in
   let nb_fields = Gdb.Obj.size r in
-  printf "{ " ;
-  if nb_fields > 1 then printf "\n" ;
+  printf "{ ";
+  if nb_fields > 1 then printf "\n";
   for field_nb = 0 to nb_fields - 1 do
-    if field_nb > 0 then printf " ;\n" ;
+    if field_nb > 0 then printf " ;\n";
     try
       let v = Gdb.Obj.field r field_nb in
       let (field_name, printer) = fields_helpers.(field_nb) in
-      printf "%s%s = " (if nb_fields > 1 then "    " else "") field_name ;
+      printf "%s%s = " (if nb_fields > 1 then "    " else "") field_name;
       printer v
     with Gdb.Read_error _ ->
       printf "<field %d read failed>" field_nb
-  done ;
-  print_string " }"
+  done;
+  printf " }"
 
 let rec identify_value type_expr env =
   match type_expr.Types.desc with
@@ -164,7 +201,7 @@ let rec identify_value type_expr env =
         | Some ty -> identify_value ty env
         end
       | Types.Type_record (field_decls, record_repr) ->
-        `Record (field_decls, record_repr)
+        `Record (path, args, field_decls, record_repr)
     end
   | Types.Tlink type_expr -> identify_value type_expr env
   | Types.Ttuple component_types -> `Tuple component_types
@@ -180,53 +217,92 @@ let rec identify_value type_expr env =
   | Types.Tpackage _ ->
     `Something_else
 
-let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
-  if depth > 2 then Gdb.print out ".." else
+let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary out v =
+  if (summary && depth > 2) || depth > 5 then Gdb.print out ".." else
   if Gdb.Obj.is_int v then print_int out v ~type_of_ident else
   if not (Gdb.Obj.is_block v) then Gdb.print out "<UNALIGNED OBJECT>" else
   begin match Gdb.Obj.tag v with
   | tag when tag < Gdb.Obj.lazy_tag ->
     let default_printers = lazy (
         Array.init (Gdb.Obj.size v) ~f:(fun _ v ->
-          value ~depth:(succ depth) ~print_sig ~type_of_ident:None out v
+          value ~depth:(succ depth) ~print_sig ~type_of_ident:None ~summary out v
         )
       )
     in
+    let default_printer ?prefix ~printers out v =
+      match default_printer ?prefix ~printers out v with
+      | `Done -> ()
+      | `Looks_like_list ->
+        if summary then
+          Gdb.print out "[...]"
+        else begin
+          let print_element =
+            value ~depth:(succ depth) ~print_sig:false out ~type_of_ident:None ~summary
+          in
+          list ~print_element out v;
+          Gdb.print out "[?]"
+        end
+    in
     begin match type_of_ident with
     | None ->
-      default_printer ~printers:(Lazy.force default_printers) out v
+      if summary then
+        Gdb.print out "..."
+      else
+        default_printer ~printers:(Lazy.force default_printers) out v
     | Some (type_expr, env) ->
       (* TODO: move out *)
       match identify_value type_expr env with
       | `Type_decl_not_found
       | `Something_else ->
-        default_printer ~printers:(Lazy.force default_printers) out v
+        if summary then
+          Gdb.print out "..."
+        else
+          default_printer ~printers:(Lazy.force default_printers) out v
       | `Tuple lst ->
-        let component_types = Array.of_list lst in
-        let printers =
-          Array.map component_types ~f:(fun ty v ->
-            value ~depth:(succ depth) ~print_sig:false
-              ~type_of_ident:(Some (ty, env)) out v
-          )
-        in
-        default_printer ~printers out v
-      | `Record (field_decls, record_repr) ->
+        if summary && (List.length lst > 2 || depth > 0) then
+          Gdb.print out "(...)"
+        else
+          let component_types = Array.of_list lst in
+          let printers =
+            Array.map component_types ~f:(fun ty v ->
+              value ~depth:(succ depth) ~print_sig:false
+                ~type_of_ident:(Some (ty, env)) ~summary out v
+            )
+          in
+          default_printer ~printers out v
+      | `Record (path, args, field_decls, record_repr) ->
         let field_decls = Array.of_list field_decls in
         if Array.length field_decls <> Gdb.Obj.size v then
           (* The record declaration doesn't appear to match the value; just bail out. *)
           let () = Gdb.print out "<type decl doesn't match value> " in
           default_printer ~printers:(Lazy.force default_printers) out v
         else
-          let fields_helpers =
-            Array.map field_decls ~f:(fun (name, _, ty) ->
-              let printer v =
-                value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
-                  ~print_sig:false out v
-              in
-              Ident.name name, printer
-            )
-          in
-          record ~fields_helpers out v
+          if Array.length field_decls = 1
+             && Ident.name (fst3 field_decls.(0)) = "contents"
+             && Path.name path = "Pervasives.ref"
+          then begin
+            Gdb.print out "ref ";
+            let contents_type =
+              match args with
+              | [_type_param, contents_type] -> Some (contents_type, env)
+              | _ -> None
+            in
+            value ~depth:(succ depth) ~type_of_ident:contents_type
+              ~print_sig:false ~summary out (Gdb.Obj.field v 0)
+          end
+          else if summary then
+            Gdb.print out "{...}"
+          else
+            let fields_helpers =
+              Array.map field_decls ~f:(fun (name, _, ty) ->
+                let printer v =
+                  value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
+                    ~print_sig:false ~summary out v
+                in
+                Ident.name name, printer
+              )
+            in
+            record ~fields_helpers out v
       | `Constructed_value (cases, args) ->
         let non_constant_ctors = extract_non_constant_ctors cases in
         let ctor_info =
@@ -236,29 +312,38 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
         | None ->
           default_printer ~printers:(Lazy.force default_printers) out v
         | Some (cident, _) when Ident.name cident = "::" && List.length args = 1 ->
-          let print_element =
-            match args with
-            | [ (_, elements_type) ] ->
-              value ~depth:(succ depth) ~print_sig:false out
-                ~type_of_ident:(Some (elements_type, env))
-            | _ -> assert false
-          in
-          list ~print_element out v
+          if summary then
+            Gdb.print out "[...]"
+          else
+            let print_element =
+              match args with
+              | [ (_, elements_type) ] ->
+                value ~depth:(succ depth) ~print_sig:false out
+                  ~type_of_ident:(Some (elements_type, env))
+                  ~summary
+              | _ -> assert false
+            in
+            list ~print_element out v
         | Some (cident, arg_types) ->
-          let arg_types = Array.of_list arg_types in
-          let printers =
-            Array.map arg_types ~f:(fun ty v ->
-              let ty =
-                try List.assoc ty args
-                with Not_found ->
-                  (* Either [ty] wasn't a type variable, or it's an existencial. *)
-                  ty 
-              in
-              value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
-                ~print_sig:false out v
-            )
-          in
-          default_printer ~printers ~prefix:(Ident.name cident) out v
+          if summary && List.length arg_types > 1 then begin
+            Gdb.print out (Ident.name cident);
+            Gdb.print out " (...)"
+          end else
+            let arg_types = Array.of_list arg_types in
+            let printers =
+              Array.map arg_types ~f:(fun ty v ->
+                let ty =
+                  try List.assoc ty args
+                  with Not_found ->
+                    (* Either [ty] wasn't a type variable, or it's an existencial. *)
+                    ty 
+                in
+                value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
+                  ~print_sig:false out v
+                  ~summary
+              )
+            in
+            default_printer ~printers ~prefix:(Ident.name cident) out v
         end
     end
   | tag when tag = Gdb.Obj.string_tag ->
@@ -271,16 +356,20 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
     with Gdb.Read_error _ ->
       Gdb.print out "<double read failed>"
     end
-  | tag when tag = Gdb.Obj.closure_tag ->
+  | tag when (tag = Gdb.Obj.closure_tag || tag = Gdb.Obj.infix_tag) ->
     begin try
-      let pc = Gdb.Target.read_field v 0 in
-      match Gdb.Priv.gdb_find_pc_line pc ~not_current:false with
-      | None -> Gdb.printf out "closure (0x%Lx)" pc
-      | Some {Gdb.Priv. symtab; line = Some line} ->
-        Gdb.printf out "closure (%s:%d)" (Gdb.Priv.gdb_symtab_filename symtab) line
-      | Some {Gdb.Priv. symtab} ->
-        Gdb.printf out "closure (%s, 0x%Lx)" (Gdb.Priv.gdb_symtab_filename symtab)
-          pc
+      if summary then
+        Gdb.print out "<fun>"
+      else begin
+        let pc = Gdb.Target.read_field v 0 in
+        match Gdb.Priv.gdb_find_pc_line pc ~not_current:false with
+        | None -> Gdb.printf out "<fun> (0x%Lx)" pc
+        | Some {Gdb.Priv. symtab; line = Some line} ->
+          Gdb.printf out "<fun> (%s:%d)" (Gdb.Priv.gdb_symtab_filename symtab) line
+        | Some {Gdb.Priv. symtab} ->
+          Gdb.printf out "<fun> (%s, 0x%Lx)" (Gdb.Priv.gdb_symtab_filename symtab)
+            pc
+      end
     with Gdb.Read_error _ ->
       Gdb.print out "closure, possibly corrupted (code pointer read failed)"
     end
@@ -288,8 +377,6 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
     Gdb.printf out "<lazy>"
   | tag when tag = Gdb.Obj.object_tag ->
     Gdb.printf out "<object>"
-  | tag when tag = Gdb.Obj.infix_tag ->
-    Gdb.printf out "<infix>"
   | tag when tag = Gdb.Obj.forward_tag ->
     Gdb.printf out "<forward>"
   | tag when tag = Gdb.Obj.abstract_tag ->
@@ -299,7 +386,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
   | tag when tag = Gdb.Obj.double_array_tag ->
     Gdb.printf out "<double array>"
   | tag -> Gdb.printf out "<v=%Ld, tag %d>" v tag
-  end ;
+  end;
   if print_sig then
     match type_of_ident with
     | None -> ()
@@ -311,5 +398,6 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident out v =
           (fun str pos len -> Gdb.print out (String.sub str pos len))
           (fun () -> ())
       in
+      Printtyp.reset_and_mark_loops type_expr;
       Printtyp.type_expr formatter type_expr;
       Format.pp_print_flush formatter ()
