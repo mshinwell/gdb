@@ -126,16 +126,17 @@ let rec value_looks_like_list value =
   else
     if (not (Gdb.Obj.is_int value))
        && Gdb.Obj.is_block value
+       && Gdb.Obj.tag value = 0
        && Gdb.Obj.size value = 2
     then
       value_looks_like_list (Gdb.Obj.field value 1)
     else
       false
 
-let default_printer ?prefix ~printers out value =
+let default_printer ?prefix ~force_never_like_list ~printers out value =
   (* See if the value looks like a list.  If it does, then print it as a list; it seems
      far more likely to be one of those than a set of nested pairs. *)
-  if value_looks_like_list value then
+  if value_looks_like_list value && not force_never_like_list then
     `Looks_like_list
   else begin
     begin match prefix with
@@ -192,6 +193,7 @@ let rec identify_value type_expr env =
     begin match env_find_type ~env ~path with
     | None -> `Type_decl_not_found
     | Some type_decl ->
+      (* CR mshinwell: not sure if this is correct, check *)
       let args = List.combine type_decl.Types.type_params args in
       match type_decl.Types.type_kind with
       | Types.Type_variant cases -> `Constructed_value (cases, args)
@@ -229,8 +231,10 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary out v =
         )
       )
     in
-    let default_printer ?prefix ~printers out v =
-      match default_printer ?prefix ~printers out v with
+    (* CR mshinwell: [force_never_like_list] is a hack, introduced to get printing of
+       non-constant constructors correct. *)
+    let default_printer ?(force_never_like_list = false) ?prefix ~printers out v =
+      match default_printer ?prefix ~force_never_like_list ~printers out v with
       | `Done -> ()
       | `Looks_like_list ->
         if summary then
@@ -333,9 +337,11 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary out v =
             let printers =
               Array.map arg_types ~f:(fun ty v ->
                 let ty =
+                  (* CR mshinwell: not sure this is correct.  Look at pat_expr_list
+                     in Translcore.transl_let. *)
                   try List.assoc ty args
                   with Not_found ->
-                    (* Either [ty] wasn't a type variable, or it's an existencial. *)
+                    (* Either [ty] wasn't a type variable, or it's an existential. *)
                     ty 
                 in
                 value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
@@ -344,6 +350,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary out v =
               )
             in
             default_printer ~printers ~prefix:(Ident.name cident) out v
+              ~force_never_like_list:true
         end
     end
   | tag when tag = Gdb.Obj.string_tag ->
