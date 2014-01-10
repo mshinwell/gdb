@@ -107,6 +107,14 @@ ocaml_print_type (struct type *type, const char *varstring, struct ui_file *stre
   }
 }
 
+static struct gdbarch_data *ocaml_type_data;
+
+const struct builtin_ocaml_type *
+builtin_ocaml_type (struct gdbarch *gdbarch)
+{
+  return gdbarch_data (gdbarch, ocaml_type_data);
+}
+
 static void
 ocaml_val_print (struct type *type, struct symbol *symbol,
                  const gdb_byte *valaddr,
@@ -115,12 +123,18 @@ ocaml_val_print (struct type *type, struct symbol *symbol,
                  const struct value *val,
                  const struct value_print_options *options)
 {
+  struct gdbarch *gdbarch = get_type_arch(type);
+
   if (is_ocaml_type (type)) {
     /* CR mshinwell: [symbol] might not be needed any more
        ...although hmm, maybe we could use [symbol] to get the directory that contains
        the cmt file instead of putting it in the DWARF type. */
     ocaml_support_val_print (type, symbol, valaddr, embedded_offset,
                              address, stream, recurse, val, options, 0);
+  }
+  else if (builtin_ocaml_type (gdbarch)
+             && type == builtin_ocaml_type (gdbarch)->builtin_record_field) {
+    fprintf(stderr, "printing of a record field\n");
   }
   else {
     c_val_print (type, symbol, valaddr, embedded_offset,
@@ -135,6 +149,7 @@ enum ocaml_primitive_types {
   ocaml_primitive_type_bool,
   ocaml_primitive_type_unit,
   ocaml_primitive_type_value,
+  ocaml_primitive_type_record_field,
   nr_ocaml_primitive_types
 };
 
@@ -155,6 +170,8 @@ ocaml_language_arch_info(struct gdbarch* gdbarch,
   lai->primitive_type_vector [ocaml_primitive_type_bool] = builtin->builtin_bool;
   lai->primitive_type_vector [ocaml_primitive_type_unit] = builtin->builtin_unit;
   lai->primitive_type_vector [ocaml_primitive_type_value] = builtin->builtin_value;
+  lai->primitive_type_vector [ocaml_primitive_type_record_field] =
+    builtin->builtin_record_field;
 
   lai->bool_type_symbol = "bool";
   lai->bool_type_default = builtin->builtin_bool;
@@ -175,6 +192,153 @@ ocaml_make_symbol_completion_list (char *text, char *word, enum type_code code)
   return default_make_symbol_completion_list_break_on (text, word, ".", code);
 }
 
+static struct value *
+evaluate_subexp_ocaml (struct type *expect_type, struct expression *exp,
+                       int *pos, enum noside noside)
+{
+  enum exp_opcode op = exp->elts[*pos].opcode;
+  struct value *arg1 = NULL;
+  struct value *arg2 = NULL;
+  struct type *type1, *type2;
+
+  switch (op)
+    {
+    case STRUCTOP_STRUCT:  /* Record field access */
+      {
+	int pc = (*pos)++;
+	int tem = longest_to_int (exp->elts[pc + 1].longconst);
+
+	(*pos) += 3 + BYTES_TO_EXP_ELEM (tem + 1);
+	arg1 = evaluate_subexp (NULL_TYPE, exp, pos, noside);
+	type1 = check_typedef (value_type (arg1));
+
+        if (is_ocaml_type (type1))
+          {
+            char *field_name = &exp->elts[pc + 2].string;
+            return value_string (field_name, strlen (field_name),
+              builtin_ocaml_type (exp->gdbarch)->builtin_record_field);
+          }
+/*
+	if (noside == EVAL_SKIP)
+	  {
+	    return value_from_longest (builtin_type (exp->gdbarch)->
+				       builtin_int, 1);
+	  }
+	else if (TYPE_CODE (type1) == TYPE_CODE_ARRAY && TYPE_VECTOR (type1))
+	  {
+	    return opencl_component_ref (exp, arg1, &exp->elts[pc + 2].string,
+					 noside);
+	  }
+	else
+	  {
+	    if (noside == EVAL_AVOID_SIDE_EFFECTS)
+	      return
+		  value_zero (lookup_struct_elt_type
+			      (value_type (arg1),&exp->elts[pc + 2].string, 0),
+			      lval_memory);
+	    else
+	      return value_struct_elt (&arg1, NULL,
+				       &exp->elts[pc + 2].string, NULL,
+				       "structure");
+	  }
+*/
+      }
+    default:
+      break;
+    }
+
+  return evaluate_subexp_c (expect_type, exp, pos, noside);
+}
+
+static void
+compile_and_run_expression (char *expr_text)
+{
+  ocaml_support_compile_and_run_expression (expr_text, NULL, NULL, 0, gdb_stderr);
+}
+
+static int parsing_call;
+
+static int
+ocaml_parse(void)
+{
+  struct stoken stoken = { lexptr, strlen (lexptr) };
+  if (strchr (lexptr, ' ') || strchr (lexptr, '('))
+    {
+      /* CR mshinwell: gross hack for the moment to detect calls */
+
+      write_exp_string (stoken);
+      lexptr += strlen (lexptr);
+      parsing_call = 1;
+      return 0;
+    }
+
+  parsing_call = 0;
+  return c_parse ();
+}
+
+static void
+ocaml_operator_length (const struct expression *expr, int endpos,
+		       int *oplenp, int *argsp)
+{
+  if (parsing_call)
+    {
+      *oplenp = 1;
+      *argsp = 0;
+      return;
+    }
+
+  operator_length_standard (expr, endpos, oplenp, argsp);
+}
+
+static struct value *
+ocaml_evaluate_exp (struct type *type, struct expression *expr,
+                    int *foo, enum noside noside)
+{
+  if (parsing_call)
+    {
+      int elt;
+      long expr_length;  /* not including NULL terminator */
+      char *expr_text;
+      char *expr_text_ptr;
+      long num_left;
+
+      gdb_assert (expr->nelts > 2);
+      expr_length = expr->elts[0].longconst;
+      expr_text = xmalloc (expr_length + 1);
+      expr_text_ptr = expr_text;
+      num_left = expr_length;
+      for (elt = 1; elt < expr->nelts - 1; elt++)
+        {
+          int pos;
+          for (pos = 0; pos < sizeof (union exp_element) && num_left > 0; pos++)
+            {
+              *expr_text_ptr++ = (&expr->elts[elt].string)[pos];
+              num_left--;
+            }
+        }
+      expr_text[expr_length] = '\0';
+
+      compile_and_run_expression (expr_text);
+
+      /* xfree (expr_text); */
+
+      return value_from_longest (
+        builtin_ocaml_type (expr->gdbarch)->builtin_value, 1 /* Val_unit */);
+    }
+
+  return evaluate_subexp_standard (type, expr, foo, noside);
+}
+
+const struct exp_descriptor exp_descriptor_ocaml =
+{
+  print_subexp_standard,
+  ocaml_operator_length,
+  operator_check_standard,
+  op_name_standard,
+  dump_subexp_body_standard,
+  ocaml_evaluate_exp,
+};
+
 const struct language_defn ocaml_language_defn =
 {
   "ocaml",			/* Language name */
@@ -183,8 +347,8 @@ const struct language_defn ocaml_language_defn =
   case_sensitive_on,
   array_row_major,
   macro_expansion_c,
-  &exp_descriptor_c,
-  c_parse,
+  &exp_descriptor_ocaml,
+  ocaml_parse,
   c_error,
   null_post_parser,
   c_printchar,			/* Print a character constant */
@@ -203,7 +367,7 @@ const struct language_defn ocaml_language_defn =
   NULL,				/* Language specific
 				   class_name_from_physname */
   c_op_print_tab,		/* expression operators for printing */
-  1,				/* c-style arrays */
+  0,				/* c-style arrays */
   0,				/* String lower bound */
   ocaml_word_break_characters,
   ocaml_make_symbol_completion_list,
@@ -233,17 +397,11 @@ build_ocaml_types (struct gdbarch *gdbarch)
   builtin_ocaml_type->builtin_float64
     = arch_float_type (gdbarch, 64, "float", NULL);
   builtin_ocaml_type->builtin_value
-    = arch_float_type (gdbarch, 64, "value", NULL);
+    = arch_integer_type (gdbarch, 64, 0, "value");
+  builtin_ocaml_type->builtin_record_field
+    = arch_character_type (gdbarch, 8, 1, "record_field");
 
   return builtin_ocaml_type;
-}
-
-static struct gdbarch_data *ocaml_type_data;
-
-const struct builtin_ocaml_type *
-builtin_ocaml_type (struct gdbarch *gdbarch)
-{
-  return gdbarch_data (gdbarch, ocaml_type_data);
 }
 
 extern initialize_file_ftype _initialize_ocaml_language;

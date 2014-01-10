@@ -28,4 +28,11 @@ void gdb_ocaml_support_print_type(struct type* type, struct ui_file* stream);
 
 char* gdb_ocaml_support_demangle (char* mangled, int options) ;
 
+void
+gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
+                                              const char **vars_in_scope_names,
+                                              CORE_ADDR *vars_in_scope_values,
+                                              int num_vars_in_scope,
+                                              struct ui_file *stream);
+
 #endif /*!GDB_OCAML_SUPPORT*/

@@ -19,6 +19,11 @@ struct gdb_ocaml_support {
   char* (*demangle) (const char *name,
                      int options);
   void (*print_type) (struct type *type, struct ui_file *stream);
+  void (*compile_and_run_expression) (const char *expr_text,
+                                      const char **vars_in_scope_names,
+                                      CORE_ADDR *vars_in_scope_values,
+                                      int num_vars_in_scope,
+                                      struct ui_file *stream);
 };
 
 extern struct gdb_ocaml_support *ocaml_support_library(void);
@@ -35,5 +40,11 @@ extern char* ocaml_support_demangle (const char* mangled, int options);
 
 extern void ocaml_support_print_type (struct type *type,
                                       struct ui_file *stream);
+
+extern void ocaml_support_compile_and_run_expression (const char *expr_text,
+                                                      const char **vars_in_scope_names,
+                                                      CORE_ADDR *vars_in_scope_values,
+                                                      int num_vars_in_scope,
+                                                      struct ui_file *stream);
 
 #endif /*!OCAML_SUPPORT_H*/

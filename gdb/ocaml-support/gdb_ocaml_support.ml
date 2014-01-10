@@ -155,7 +155,7 @@ let decode_dwarf_type dwarf_type =
     match delimiter with
     | None -> None, None
     | Some delimiter when delimiter <= String.length magic -> None, None
-    | Some delimiter ->
+    | Some delimiter -> begin
       let source_file_path =
         String.sub dwarf_type (String.length magic)
           (delimiter - (String.length magic))
@@ -164,7 +164,11 @@ let decode_dwarf_type dwarf_type =
         String.sub dwarf_type (delimiter + 1)
           ((String.length dwarf_type) - (delimiter + 1))
       in
+      if debug then
+        Printf.eprintf "source file path '%s' symbol linkage name '%s'\n%!"
+          source_file_path symbol_linkage_name;
       Some source_file_path, Some symbol_linkage_name
+    end
 
 let cmt_file_of_source_file_path ~source_file_path =
   (* CR mshinwell: This desperately needs to cache the result. *)
@@ -228,3 +232,59 @@ let print_type ~dwarf_type ~out =
     Format.pp_print_flush formatter ()
 
 let () = Callback.register "gdb_ocaml_support_print_type" print_type
+
+external run_function_on_target : unit -> Gdb.Obj.t
+  = "gdb_ocaml_support_run_function_on_target"
+
+let counter = ref 0
+
+let compile_and_run_expression ~expr_text ~vars_in_scope_names ~vars_in_scope_values
+      ~out =
+  let open Clflags in
+  let open Compenv in
+  assert (Array.length vars_in_scope_names = Array.length vars_in_scope_values);
+  (* CR mshinwell: name clash on [debug] *)
+  let base_name = Printf.sprintf "gdb_expr%d" !counter in
+  let name = Printf.sprintf "/tmp/%s.ml" base_name in
+  let source_file_name = Printf.sprintf "/tmp/%s" base_name in
+  let output_name = ref (Some (source_file_name ^ ".cmxs")) in
+  let source_file = open_out name in
+  output_string source_file "external set_result : 'a -> unit = \
+                               \"caml_natdynlink_gdb_set_result\";;\n";
+  output_string source_file ("let v = (" ^ expr_text ^ ");;");
+  output_string source_file "let () = set_result v;;\n";
+  close_out source_file;
+  objfiles := [];
+  let opref = output_prefix name in
+  let ppf = Format.err_formatter in
+  try
+    Clflags.binary_annotations := true;
+    Clflags.dlcode := true;
+    Clflags.debug := true;
+    Clflags.debug_full := true;
+    Optcompile.implementation ppf name opref;
+    let stamp = 1015
+(*
+      let fresh_ident = Ident.create "foo" in
+      (* CR mshinwell: work out how to do this properly *)
+      fresh_ident.Ident.stamp - 8
+*)
+    in
+    let dwarf_type = Printf.sprintf "__ocaml%s.ml v_%d" source_file_name stamp in
+  (*  if our_debug then Printf.eprintf "dwarf type '%s'\n%!" dwarf_type; *)
+    objfiles := (opref ^ ".cmx") :: !objfiles;
+    Compmisc.init_path true;
+    let target = extract_output !output_name in
+    Asmlink.link_shared ppf (get_objfiles ()) target;
+    Warnings.check_fatal ();
+    let result = run_function_on_target () in
+    incr counter;
+    val_print result out ~dwarf_type ~call_site:Call_site.None ~summary:false;
+    Gdb.print out "\n"
+    (* CR mshinwell: remove temp files *)
+  with exn ->
+    Opterrors.report_error ppf exn
+
+let () =
+  Callback.register "gdb_ocaml_support_compile_and_run_expression"
+    compile_and_run_expression

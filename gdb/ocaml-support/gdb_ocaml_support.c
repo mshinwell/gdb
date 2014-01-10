@@ -27,10 +27,13 @@
 
 #include "gdb_ocaml_support.h"
 #include "ml_utils.h"
+#include "../infcall.h"
 #include "../symtab.h"
 #include "../valprint.h"
 
 #include <string.h>
+
+extern value caml_make_vect (value, value);
 
 int
 gdb_ocaml_support_init (void)
@@ -298,4 +301,59 @@ gdb_ocaml_support_print_type(struct type* type, struct ui_file* stream)
   (void) caml_callbackN(*callback, 2, args);
 
   CAMLreturn0;
+}
+
+void
+gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
+                                              const char **vars_in_scope_names,
+                                              CORE_ADDR *vars_in_scope_values,
+                                              int num_vars_in_scope,
+                                              struct ui_file *stream)
+{
+  CAMLparam0();
+  CAMLlocal3(v_expr_text, v_vars_in_scope_names, v_vars_in_scope_values);
+  CAMLlocalN(args, 4);
+  static value *callback = NULL;
+
+  if (callback == NULL) {
+    callback = caml_named_value ("gdb_ocaml_support_compile_and_run_expression");
+  }
+
+  /* CR mshinwell: not sure this will do---these allocations might disturb
+     [vars_in_scope_values] */
+  v_expr_text = caml_copy_string(expr_text);
+  v_vars_in_scope_names = caml_make_vect(0, Val_unit);
+  v_vars_in_scope_values = caml_make_vect(0, Val_unit);
+
+  args[0] = v_expr_text;
+  args[1] = v_vars_in_scope_names;
+  args[2] = v_vars_in_scope_values;
+  args[3] = Val_ptr(stream);
+  (void) caml_callbackN(*callback, 4, args);
+
+  CAMLreturn0;
+}
+
+value
+gdb_ocaml_support_run_function_on_target(value v_unit)
+{
+  struct value *result;
+  struct symbol *veneer;
+  struct value *veneer_func;
+
+  veneer = lookup_symbol_global("caml_natdynlink_gdb_run", NULL, VAR_DOMAIN);
+  if (!veneer) {
+    fprintf(stderr, "Failed to find expression evaluation entry point (1)\n");
+    return Val_unit;
+  }
+
+  veneer_func = address_of_variable(veneer, NULL);
+  if (!veneer_func) {
+    fprintf(stderr, "Failed to find expression evaluation entry point (2)\n");
+    return Val_unit;
+  }
+
+  result = call_function_by_hand (veneer_func, 0, NULL);
+
+  return caml_copy_int64 (value_as_address (result));
 }

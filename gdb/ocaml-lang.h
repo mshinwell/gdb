@@ -16,6 +16,7 @@ struct builtin_ocaml_type
   struct type* builtin_float64;
   struct type* builtin_value;
   struct type* builtin_float;
+  struct type *builtin_record_field;
 };
 
 extern const char *ocaml_main_name (void);

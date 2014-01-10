@@ -62,6 +62,7 @@ ocaml_support_init (struct gdb_ocaml_support *stubs)
   SET_STUB (stubs, handle, val_print);
   SET_STUB (stubs, handle, demangle);
   SET_STUB (stubs, handle, print_type);
+  SET_STUB (stubs, handle, compile_and_run_expression);
 
   return handle;
 }
@@ -122,5 +123,21 @@ ocaml_support_print_type (struct type *type, struct ui_file *stream)
   if (stubs && stubs->print_type)
     {
       return (stubs->print_type (type, stream));
+    }
+}
+
+void
+ocaml_support_compile_and_run_expression (const char *expr_text,
+                                          const char **vars_in_scope_names,
+                                          CORE_ADDR *vars_in_scope_values,
+                                          int num_vars_in_scope,
+                                          struct ui_file *stream)
+{
+  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  if (stubs && stubs->compile_and_run_expression)
+    {
+      stubs->compile_and_run_expression (expr_text, vars_in_scope_names,
+                                         vars_in_scope_values, num_vars_in_scope,
+                                         stream);
     }
 }
