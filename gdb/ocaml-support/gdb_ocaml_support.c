@@ -27,7 +27,10 @@
 
 #include "gdb_ocaml_support.h"
 #include "ml_utils.h"
+
+#include "../frame.h"
 #include "../infcall.h"
+#include "../stack.h"
 #include "../symtab.h"
 #include "../valprint.h"
 
@@ -303,6 +306,50 @@ gdb_ocaml_support_print_type(struct type* type, struct ui_file* stream)
   CAMLreturn0;
 }
 
+typedef struct {
+  int next_index;
+  int size;
+  struct frame_info* frame;
+  const char** names;
+  struct value** values;
+} vars_for_frame;
+
+static void
+count_block_args(const char* print_name, struct symbol* sym, void* user_data)
+{
+  int* num_args = (int*) user_data;
+  *num_args = *num_args + 1;
+}
+
+static void
+read_block_args(const char* print_name, struct symbol* sym, void* user_data)
+{
+  struct frame_arg arg;
+  struct frame_arg entry_arg;
+  vars_for_frame* vars = (vars_for_frame*) user_data;
+
+  gdb_assert(vars->next_index >= 0 && vars->next_index < vars->size);
+
+  read_frame_arg(sym, vars->frame, &arg, &entry_arg);
+  if (arg.val && arg.sym && !arg.error) {
+    vars->names[vars->next_index] = SYMBOL_PRINT_NAME(arg.sym);
+    /* [arg.val], which is an address in the memory space of gdb, might on the target
+       lie in the OCaml heap.  Thus we make sure we can safely encode it as an
+       integer. */
+    if ((((value) arg.val) & 1) == 0) {
+      vars->values[vars->next_index] = arg.val;
+      vars->next_index++;
+    }
+  }
+
+  if (arg.error) {
+    xfree(arg.error);
+  }
+  if (entry_arg.error) {
+    xfree(entry_arg.error);
+  }
+}
+
 void
 gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
                                               const char **vars_in_scope_names,
@@ -314,32 +361,79 @@ gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
   CAMLlocal3(v_expr_text, v_vars_in_scope_names, v_vars_in_scope_values);
   CAMLlocalN(args, 4);
   static value *callback = NULL;
+  struct frame_info* current_frame;
+  struct symbol* current_function;
+  CORE_ADDR pc;
+  int num_args = 0;
+
+  current_frame = get_current_frame();
+  if (get_frame_pc_if_available(current_frame, &pc)) {
+    current_function = get_frame_function(current_frame);
+    if (current_function != NULL) {
+      iterate_over_block_arg_vars(SYMBOL_BLOCK_VALUE(current_function),
+                                  count_block_args, &num_args);
+    }
+  }
+
+  if (num_args > 0) {
+    vars_for_frame vars;
+    vars.next_index = 0;
+    vars.size = num_args;
+    vars.frame = current_frame;
+    vars.names = xmalloc(sizeof(const char*) * num_args);
+    vars.values = xmalloc(sizeof(value*) * num_args);
+    iterate_over_block_arg_vars(SYMBOL_BLOCK_VALUE(current_function),
+                                read_block_args, &vars);
+    gdb_assert(vars.next_index <= vars.size);
+    if (vars.next_index < vars.size) {
+      /* For the moment we don't allow access to any arguments if the reading of one
+         or more of them failed. */
+      num_args = 0;
+    }
+    else {
+      int arg;
+      v_vars_in_scope_names = caml_alloc(num_args, 0);
+      v_vars_in_scope_values = caml_alloc(num_args, 0);
+      for (arg = 0; arg < num_args; arg++) {
+        Store_field(v_vars_in_scope_names, arg, caml_copy_string(vars.names[arg]));
+        /* See comment above re. the lowest bit of [vars.values[arg]]. */
+        Store_field(v_vars_in_scope_values, arg, ((value) (vars.values[arg])) | 1);
+      }
+    }
+    xfree(vars.names);
+    xfree(vars.values);
+  }
+
+  if (num_args <= 0) {
+    v_vars_in_scope_names = caml_alloc(0, 0);
+    v_vars_in_scope_values = caml_alloc(0, 0);
+  }
+
+  v_expr_text = caml_copy_string(expr_text);
 
   if (callback == NULL) {
     callback = caml_named_value ("gdb_ocaml_support_compile_and_run_expression");
   }
 
-  /* CR mshinwell: not sure this will do---these allocations might disturb
-     [vars_in_scope_values] */
-  v_expr_text = caml_copy_string(expr_text);
-  v_vars_in_scope_names = caml_make_vect(0, Val_unit);
-  v_vars_in_scope_values = caml_make_vect(0, Val_unit);
-
-  args[0] = v_expr_text;
-  args[1] = v_vars_in_scope_names;
-  args[2] = v_vars_in_scope_values;
-  args[3] = Val_ptr(stream);
+  Store_field(args, 0, v_expr_text);
+  Store_field(args, 1, v_vars_in_scope_names);
+  Store_field(args, 2, v_vars_in_scope_values);
+  Store_field(args, 3, Val_ptr(stream));
   (void) caml_callbackN(*callback, 4, args);
 
   CAMLreturn0;
 }
 
 value
-gdb_ocaml_support_run_function_on_target(value v_unit)
+gdb_ocaml_support_run_function_on_target(value v_var_args)
 {
   struct value *result;
   struct symbol *veneer;
   struct value *veneer_func;
+  struct value** args = NULL;
+  struct gdbarch* gdbarch;
+  int num_args;
+  int arg;
 
   veneer = lookup_symbol_global("caml_natdynlink_gdb_run", NULL, VAR_DOMAIN);
   if (!veneer) {
@@ -353,7 +447,20 @@ gdb_ocaml_support_run_function_on_target(value v_unit)
     return Val_unit;
   }
 
-  result = call_function_by_hand (veneer_func, 0, NULL);
+  num_args = Wosize_val(v_var_args);
+  if (num_args > 0) {
+    args = xmalloc(sizeof(struct value*) * (1 + num_args));
+    gdbarch = get_frame_arch(get_current_frame());
+    args[0] = value_from_longest(builtin_type(gdbarch)->builtin_int64, num_args);
+    for (arg = 0; arg < num_args; arg++) {
+      args[1 + arg] = (struct value*) (Field(v_var_args, arg) & ~((value) 1));
+    }
+  }
+  result = call_function_by_hand (veneer_func, 1 + num_args, args);
+  /* CR mshinwell: do we have to free [args[0]]? */
+  if (args) {
+    xfree(args);
+  }
 
   return caml_copy_int64 (value_as_address (result));
 }

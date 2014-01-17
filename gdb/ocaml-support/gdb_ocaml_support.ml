@@ -233,26 +233,48 @@ let print_type ~dwarf_type ~out =
 
 let () = Callback.register "gdb_ocaml_support_print_type" print_type
 
-external run_function_on_target : unit -> Gdb.Obj.t
+module Gdb_struct_value = struct type t end
+
+external run_function_on_target : Gdb_struct_value.t array -> Gdb.Obj.t
   = "gdb_ocaml_support_run_function_on_target"
 
 let counter = ref 0
 
 let compile_and_run_expression ~expr_text ~vars_in_scope_names ~vars_in_scope_values
       ~out =
+  let debug' = debug in
+  if debug then
+    Printf.eprintf "text '%s' names %d, values %d\n%!" expr_text
+      (Array.length vars_in_scope_names) (Array.length vars_in_scope_values);
   let open Clflags in
   let open Compenv in
   assert (Array.length vars_in_scope_names = Array.length vars_in_scope_values);
+  let num_vars = Array.length vars_in_scope_names in
   (* CR mshinwell: name clash on [debug] *)
   let base_name = Printf.sprintf "gdb_expr%d" !counter in
   let name = Printf.sprintf "/tmp/%s.ml" base_name in
   let source_file_name = Printf.sprintf "/tmp/%s" base_name in
   let output_name = ref (Some (source_file_name ^ ".cmxs")) in
   let source_file = open_out name in
+  let var_seq = String.concat " " (Array.to_list vars_in_scope_names) in
+  let get_var_seq =
+    let get_var_seq = ref "" in
+    for arg_index = 0 to num_vars - 1 do
+      get_var_seq := Printf.sprintf "%s (get_var %d)" !get_var_seq arg_index
+    done;
+    !get_var_seq
+  in
+  if debug' then begin
+    Printf.eprintf "calling var_seq: '%s'\n" var_seq;
+    Printf.eprintf "calling get_var_seq: '%s'\n" get_var_seq
+  end;
+  output_string source_file (Printf.sprintf "let v %s = (%s);; " var_seq expr_text);
   output_string source_file "external set_result : 'a -> unit = \
-                               \"caml_natdynlink_gdb_set_result\";;\n";
-  output_string source_file ("let v = (" ^ expr_text ^ ");;");
-  output_string source_file "let () = set_result v;;\n";
+                               \"caml_natdynlink_gdb_set_result\";; ";
+  output_string source_file "external get_var : int -> 'a = \
+                               \"caml_natdynlink_gdb_get_var\";; ";
+  output_string source_file
+    (Printf.sprintf "let () = set_result (v %s);;\n" get_var_seq);
   close_out source_file;
   objfiles := [];
   let opref = output_prefix name in
@@ -277,7 +299,7 @@ let compile_and_run_expression ~expr_text ~vars_in_scope_names ~vars_in_scope_va
     let target = extract_output !output_name in
     Asmlink.link_shared ppf (get_objfiles ()) target;
     Warnings.check_fatal ();
-    let result = run_function_on_target () in
+    let result = run_function_on_target vars_in_scope_values in
     incr counter;
     val_print result out ~dwarf_type ~call_site:Call_site.None ~summary:false;
     Gdb.print out "\n"
