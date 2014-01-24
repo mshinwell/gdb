@@ -22,6 +22,8 @@ open Std
 
 let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
 
+let distinguished_var_name = "camlaverydistinguishedvariableindeed"
+
 module LocTable = Map.Make (struct
   type t = Location.t
   let compare x y =
@@ -293,6 +295,27 @@ let load ~filename =
             type_expr, Env.env_of_only_summary Envaux.env_from_summary env
           ) app_points
         in
+        let distinguished_ident =
+          let ident = ref None in
+          String.Map.iter
+            (fun candidate type_expr_and_env -> 
+              try
+                if String.sub candidate 0 (String.length distinguished_var_name)
+                  = distinguished_var_name
+                then begin
+                  ident := Some (candidate, type_expr_and_env)
+                end
+              with _exn -> ())
+            idents;
+          !ident
+        in
+        let idents =
+          (* CR mshinwell: work out a proper solution to this problem *)
+          match distinguished_ident with
+          | None -> idents
+          | Some (_ident, type_expr_and_env) ->
+            String.Map.add distinguished_var_name type_expr_and_env idents
+        in
         idents, app_points
       with exn -> begin
         if debug then
@@ -315,14 +338,15 @@ let type_of_ident t ~unique_name =
   try Some (String.Map.find unique_name t.idents_to_types)
   with Not_found -> None
 
-let find_argument_types t ~source_file_of_call_site ~line_number_of_call_site =
+let find_argument_types t ~source_file_of_call_site ~line_number_of_call_site
+      ~column_number_of_call_site =
   (* CR mshinwell: this is dreadful, but will suffice for now *)
   let candidates =
     LocTable.fold (fun location type_expr candidates ->
-      let start_file, start_line, _start_char =
+      let start_file, start_line, start_char =
         Location.get_pos_info location.Location.loc_start
       in
-      let end_file, end_line, _end_char =
+      let end_file, end_line, end_char =
         Location.get_pos_info location.Location.loc_end
       in
       (* CR mshinwell: still not good enough---could have multiple source files
@@ -330,6 +354,8 @@ let find_argument_types t ~source_file_of_call_site ~line_number_of_call_site =
       if start_file = source_file_of_call_site && start_file = end_file
         && start_line <= line_number_of_call_site
         && end_line >= line_number_of_call_site
+        && start_char <= column_number_of_call_site
+        && end_char >= column_number_of_call_site
       then
         type_expr :: candidates
       else

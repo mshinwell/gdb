@@ -2,7 +2,7 @@
 /*                                                                     */
 /*                Debugger support library for OCaml                   */
 /*                                                                     */
-/*  Copyright 2013, Jane Street Holding                                */
+/*  Copyright 2013--2014, Jane Street Holding                          */
 /*                                                                     */
 /*  Licensed under the Apache License, Version 2.0 (the "License");    */
 /*  you may not use this file except in compliance with the License.   */
@@ -17,6 +17,8 @@
 /*  language governing permissions and limitations under the License.  */
 /*                                                                     */
 /***********************************************************************/
+
+#define CAML_NAME_SPACE 1
 
 #include <caml/memory.h>
 #include <caml/alloc.h>
@@ -72,6 +74,103 @@ ocaml_dwarf_type_name_indicates_parameter(const char* name)
 }
 
 static void
+try_to_find_call_point_of_frame(struct frame_info* selected_frame,
+                                value* v_call_point_out)
+{
+  CORE_ADDR return_address;
+  CORE_ADDR pc_in_original_selected_frame;
+  struct symbol* original_function;
+  int depth;
+  int stop;
+  CAMLparam0();
+  CAMLlocal2(v_call_point, v_call_point_source_file);
+
+  stop = 0;
+  depth = 0;
+  return_address = 0;
+  *v_call_point_out = Val_long(0); /* Call_point.None */
+
+  pc_in_original_selected_frame = get_frame_pc(selected_frame);
+  original_function = find_pc_function(pc_in_original_selected_frame);
+
+  while (!stop && depth++ < 100
+           && original_function != NULL && selected_frame != NULL) {
+    struct symbol* selected_function;
+    CORE_ADDR this_return_address;
+    if (frame_unwind_caller_pc_if_available(selected_frame, &this_return_address)) {
+      selected_function = find_pc_function(this_return_address);
+
+      if (!selected_function) {
+        /* We couldn't find out what function [return_address] lies in.  We'll
+           use the most recent return address we could resolve, if any. */
+        stop = 1;
+      }
+      else if (selected_function != original_function) {
+        /* [selected_frame] returns to an address that is not in the current
+           function; use that return address. */
+        return_address = this_return_address;
+        stop = 1;
+      }
+      else {
+        /* [selected_frame] returns to the current function, so continue searching
+           up the stack. */
+        selected_frame = get_prev_frame(selected_frame);
+        return_address = this_return_address;
+      }
+    }
+    else {
+      /* The return address from [selected_frame] cannot be determined.  We'll use
+         the most recent return address we could resolve, if any. */
+      stop = 1;
+    }
+  }
+
+  /* If we've found a return address, determine the name of the call point to which
+     it corresponds, so that we can find its type information in the .cmt file. */
+  /* CR mshinwell: try to fix gdb to know about column numbers (which are in the
+     DWARF information), or find a less awful way of doing this, such as a
+     separate table. */
+  if (return_address) {
+    const char* call_point_symbol_name;
+    CORE_ADDR call_point_symbol_start_addr;
+    CORE_ADDR call_point_symbol_end_addr;
+    struct symtab_and_line symtab_and_line;
+    int line;
+    int column = 0;
+
+    if (find_pc_partial_function(return_address, &call_point_symbol_name,
+                                 &call_point_symbol_start_addr,
+                                 &call_point_symbol_end_addr)) {
+      const char* char_pos;
+      char_pos = strrchr(call_point_symbol_name, '_');
+      if (char_pos && char_pos[1] != '\0') {
+        column = atoi(&char_pos[1]);
+      }
+    }
+
+    /* Recover the source file and line number by more orthodox methods. */
+    symtab_and_line = find_pc_line(return_address, 0);
+    line = symtab_and_line.line;
+    if (line > 0) {
+      /* CR mshinwell: what happens if we have more than one source file with
+         the same name? */
+      /* CR mshinwell: could encode more information in the call point symbol... */
+      char* filename = symtab_and_line.symtab->filename;
+      gdb_assert(filename != NULL);  /* cf. symtab.h */
+      v_call_point_source_file = caml_copy_string(filename);
+      v_call_point = caml_alloc_small(3, 0 /* Call_point.Some */);
+      Field(v_call_point, 0) = v_call_point_source_file;
+      Field(v_call_point, 1) = Val_long(line);
+      Field(v_call_point, 2) = Val_long(column);
+    }
+  }
+
+  *v_call_point_out = v_call_point;
+
+  CAMLreturn0;
+}
+
+static void
 ocaml_val_print (value callback,
                  struct type *type, struct symbol *symbol,
                  const gdb_byte *valaddr,
@@ -82,7 +181,7 @@ ocaml_val_print (value callback,
                  int depth)
 {
   CAMLparam0();
-  CAMLlocal3(v_type, v_call_point_source_file, v_call_point);
+  CAMLlocal2(v_type, v_call_point);
   CAMLlocalN(args, 5);
   struct frame_info* selected_frame;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
@@ -150,73 +249,13 @@ ocaml_val_print (value callback,
      across compilation units means we could go wrong here. */
   v_call_point = Val_long(0);  /* Call_point.None */
 
-  if (ocaml_dwarf_type_name_indicates_parameter(TYPE_NAME(type))) {
+  /* CR mshinwell: fix the problem of unavailability of [symbol] during e.g.
+     "print arg". */
+  if (symbol && SYMBOL_IS_ARGUMENT (symbol)) {
     selected_frame = get_selected_frame_if_set();
 
     if (selected_frame != NULL) {
-      CORE_ADDR return_address;
-      CORE_ADDR pc_in_original_selected_frame;
-      struct symbol* original_function;
-      int depth;
-      int stop;
-
-      stop = 0;
-      depth = 0;
-      return_address = 0;
-
-      pc_in_original_selected_frame = get_frame_pc(selected_frame);
-      original_function = find_pc_function(pc_in_original_selected_frame);
-
-      while (!stop && depth++ < 100
-               && original_function != NULL && selected_frame != NULL) {
-        struct symbol* selected_function;
-        CORE_ADDR this_return_address;
-        if (frame_unwind_caller_pc_if_available(selected_frame, &this_return_address)) {
-          selected_function = find_pc_function(this_return_address);
-
-          if (!selected_function) {
-            /* We couldn't find out what function [return_address] lies in.  We'll
-               use the most recent return address we could resolve, if any. */
-            stop = 1;
-          }
-          else if (selected_function != original_function) {
-            /* [selected_frame] returns to an address that is not in the current
-               function; use that return address. */
-            return_address = this_return_address;
-            stop = 1;
-          }
-          else {
-            /* [selected_frame] returns to the current function, so continue searching
-               up the stack. */
-            selected_frame = get_prev_frame(selected_frame);
-            return_address = this_return_address;
-          }
-        }
-        else {
-          /* The return address from [selected_frame] cannot be determined.  We'll use
-             the most recent return address we could resolve, if any. */
-          stop = 1;
-        }
-      }
-
-      /* If we've found a return address, attempt to translate it into a source
-         location. */
-      if (return_address) {
-        int line;
-        struct symtab_and_line symtab_and_line = find_pc_line(return_address, 0);
-        line = symtab_and_line.line;
-        if (line > 0) {
-          /* CR mshinwell: what happens if we have more than one source file with
-             the same name? */
-          /* CR mshinwell: we need the character position as well, really... */
-          char* filename = symtab_and_line.symtab->filename;
-          gdb_assert(filename != NULL);  /* cf. symtab.h */
-          v_call_point_source_file = caml_copy_string(filename);
-          v_call_point = caml_alloc_small(2, 0 /* Call_point.Some */);
-          Field(v_call_point, 0) = v_call_point_source_file;
-          Field(v_call_point, 1) = Val_long(line);
-        }
-      }
+      try_to_find_call_point_of_frame(selected_frame, &v_call_point);
     }
   }
 
@@ -310,7 +349,8 @@ typedef struct {
   int next_index;
   int size;
   struct frame_info* frame;
-  const char** names;
+  const char** human_names;
+  const char** linkage_names;
   struct value** values;
 } vars_for_frame;
 
@@ -332,7 +372,8 @@ read_block_args(const char* print_name, struct symbol* sym, void* user_data)
 
   read_frame_arg(sym, vars->frame, &arg, &entry_arg);
   if (arg.val && arg.sym && !arg.error) {
-    vars->names[vars->next_index] = SYMBOL_PRINT_NAME(arg.sym);
+    vars->human_names[vars->next_index] = SYMBOL_PRINT_NAME(arg.sym);
+    vars->linkage_names[vars->next_index] = SYMBOL_LINKAGE_NAME(arg.sym);
     /* [arg.val], which is an address in the memory space of gdb, might on the target
        lie in the OCaml heap.  Thus we make sure we can safely encode it as an
        integer. */
@@ -350,6 +391,7 @@ read_block_args(const char* print_name, struct symbol* sym, void* user_data)
   }
 }
 
+/* CR mshinwell: remove unused parameters */
 void
 gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
                                               const char **vars_in_scope_names,
@@ -358,12 +400,15 @@ gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
                                               struct ui_file *stream)
 {
   CAMLparam0();
-  CAMLlocal3(v_expr_text, v_vars_in_scope_names, v_vars_in_scope_values);
-  CAMLlocalN(args, 4);
+  CAMLlocal2(v_expr_text, v_vars_in_scope_human_names);
+  CAMLlocal2(v_vars_in_scope_linkage_names, v_vars_in_scope_values);
+  CAMLlocal1(v_source_file_path);
+  CAMLlocalN(args, 7);
   static value *callback = NULL;
   struct frame_info* current_frame;
-  struct symbol* current_function;
+  struct symbol* current_function = NULL;
   CORE_ADDR pc;
+  value v_call_point = Val_long(0);  /* Call_point.None */
   int num_args = 0;
 
   current_frame = get_current_frame();
@@ -380,7 +425,8 @@ gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
     vars.next_index = 0;
     vars.size = num_args;
     vars.frame = current_frame;
-    vars.names = xmalloc(sizeof(const char*) * num_args);
+    vars.human_names = xmalloc(sizeof(const char*) * num_args);
+    vars.linkage_names = xmalloc(sizeof(const char*) * num_args);
     vars.values = xmalloc(sizeof(value*) * num_args);
     iterate_over_block_arg_vars(SYMBOL_BLOCK_VALUE(current_function),
                                 read_block_args, &vars);
@@ -392,34 +438,50 @@ gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
     }
     else {
       int arg;
-      v_vars_in_scope_names = caml_alloc(num_args, 0);
+
+      try_to_find_call_point_of_frame(current_frame, &v_call_point);
+
+      v_vars_in_scope_human_names = caml_alloc(num_args, 0);
+      v_vars_in_scope_linkage_names = caml_alloc(num_args, 0);
       v_vars_in_scope_values = caml_alloc(num_args, 0);
       for (arg = 0; arg < num_args; arg++) {
-        Store_field(v_vars_in_scope_names, arg, caml_copy_string(vars.names[arg]));
+        Store_field(v_vars_in_scope_human_names, arg,
+                    caml_copy_string(vars.human_names[arg]));
+        Store_field(v_vars_in_scope_linkage_names, arg,
+                    caml_copy_string(vars.linkage_names[arg]));
         /* See comment above re. the lowest bit of [vars.values[arg]]. */
         Store_field(v_vars_in_scope_values, arg, ((value) (vars.values[arg])) | 1);
       }
     }
-    xfree(vars.names);
+    xfree(vars.human_names);
+    xfree(vars.linkage_names);
     xfree(vars.values);
   }
 
   if (num_args <= 0) {
-    v_vars_in_scope_names = caml_alloc(0, 0);
+    v_vars_in_scope_human_names = caml_alloc(0, 0);
+    v_vars_in_scope_linkage_names = caml_alloc(0, 0);
     v_vars_in_scope_values = caml_alloc(0, 0);
   }
 
   v_expr_text = caml_copy_string(expr_text);
+  /* CR mshinwell: consider making this an option */
+  v_source_file_path =
+    (current_function ? caml_copy_string(current_function->symtab->filename)
+      : caml_copy_string(""));
 
   if (callback == NULL) {
     callback = caml_named_value ("gdb_ocaml_support_compile_and_run_expression");
   }
 
   Store_field(args, 0, v_expr_text);
-  Store_field(args, 1, v_vars_in_scope_names);
-  Store_field(args, 2, v_vars_in_scope_values);
-  Store_field(args, 3, Val_ptr(stream));
-  (void) caml_callbackN(*callback, 4, args);
+  Store_field(args, 1, v_source_file_path);
+  Store_field(args, 2, v_vars_in_scope_human_names);
+  Store_field(args, 3, v_vars_in_scope_linkage_names);
+  Store_field(args, 4, v_vars_in_scope_values);
+  Store_field(args, 5, v_call_point);
+  Store_field(args, 6, Val_ptr(stream));
+  (void) caml_callbackN(*callback, 7, args);
 
   CAMLreturn0;
 }

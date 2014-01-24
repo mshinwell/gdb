@@ -2,7 +2,7 @@
 (*                                                                     *)
 (*                 Debugger support library for OCaml                  *)
 (*                                                                     *)
-(*  Copyright 2013, Jane Street Holding                                *)
+(*  Copyright 2013--2014, Jane Street Holding                          *)
 (*                                                                     *)
 (*  Licensed under the Apache License, Version 2.0 (the "License");    *)
 (*  you may not use this file except in compliance with the License.   *)
@@ -84,61 +84,64 @@ let rec type_is_polymorphic type_expr =
 module Call_site = struct
   type t =
   | None
-  | Some of string * int
+  | Some of string * int * int  (* filename, line number, column number *)
 end
+
+let find_type_and_env ~symbol_linkage_name ~cmt_file ~call_site =
+  match symbol_linkage_name with
+  | None -> None
+  | Some symbol_linkage_name ->
+    let action =
+      let unique_name = strip_parameter_index_from_unique_name symbol_linkage_name in
+      match Cmt_file.type_of_ident cmt_file ~unique_name with
+      | None -> `Try_call_site_but_fallback_to None
+      | Some (type_expr, env) ->
+        if type_is_polymorphic type_expr then
+          `Try_call_site_but_fallback_to (Some (type_expr, env))
+        else
+          `Have_type (type_expr, env)
+    in
+    match action with
+    | `Have_type (type_expr, env) -> Some (type_expr, env)
+    | `Try_call_site_but_fallback_to fallback ->
+      match call_site with
+      | Call_site.None -> fallback
+      | Call_site.Some (source_file, line_number, column_number) ->
+        if debug then
+          Printf.printf "call site info: file %s, line %d, column %d\n%!"
+            source_file line_number column_number;
+        let from_call_site =
+          Cmt_file.find_argument_types cmt_file
+            ~source_file_of_call_site:source_file
+            ~line_number_of_call_site:line_number
+            ~column_number_of_call_site:column_number
+        in
+        match from_call_site with
+        | None -> fallback
+        | Some (type_exprs, env) ->
+          match parameter_index_of_unique_name symbol_linkage_name with
+          | None -> fallback
+          | Some parameter_index ->
+            if debug then
+              Printf.printf "'%s': parameter index %d: "
+                symbol_linkage_name parameter_index;
+            if parameter_index < 0 || parameter_index >= List.length type_exprs then
+              fallback
+            else
+              match (Array.of_list type_exprs).(parameter_index) with
+              | `Ty type_expr ->
+                if debug then Printf.printf "found type.\n%!";
+                Some (type_expr, env)
+              | `Recover_label_ty label ->
+                (* CR mshinwell: need to fix this.  Unfortunately [label] is not
+                   stamped, which might make it troublesome to find the correct
+                   identifier. *)
+                if debug then Printf.printf "using fallback.\n%!";
+                fallback
 
 (* CR mshinwell: there are THREE functions by the name of [val_print] now *)
 let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site ~summary =
-  let type_of_ident =
-    match symbol_linkage_name with
-    | None -> None
-    | Some symbol_linkage_name ->
-      let action =
-        let unique_name = strip_parameter_index_from_unique_name symbol_linkage_name in
-        match Cmt_file.type_of_ident cmt_file ~unique_name with
-        | None -> `Try_call_site_but_fallback_to None
-        | Some (type_expr, env) ->
-          if type_is_polymorphic type_expr then
-            `Try_call_site_but_fallback_to (Some (type_expr, env))
-          else
-            `Have_type (type_expr, env)
-      in
-      match action with
-      | `Have_type (type_expr, env) -> Some (type_expr, env)
-      | `Try_call_site_but_fallback_to fallback ->
-        match call_site with
-        | Call_site.None -> fallback
-        | Call_site.Some (source_file, line_number) ->
-          if debug then
-            Printf.printf "call site info: file %s, line %d\n%!" source_file line_number;
-          let from_call_site =
-            Cmt_file.find_argument_types cmt_file
-              ~source_file_of_call_site:source_file
-              ~line_number_of_call_site:line_number
-          in
-          match from_call_site with
-          | None -> fallback
-          | Some (type_exprs, env) ->
-            match parameter_index_of_unique_name symbol_linkage_name with
-            | None -> fallback
-            | Some parameter_index ->
-              if debug then
-                Printf.printf "'%s': parameter index %d: "
-                  symbol_linkage_name parameter_index;
-              if parameter_index < 0 || parameter_index >= List.length type_exprs then
-                fallback
-              else
-                match (Array.of_list type_exprs).(parameter_index) with
-                | `Ty type_expr ->
-                  if debug then Printf.printf "found type.\n%!";
-                  Some (type_expr, env)
-                | `Recover_label_ty label ->
-                  (* CR mshinwell: need to fix this.  Unfortunately [label] is not
-                     stamped, which might make it troublesome to find the correct
-                     identifier. *)
-                  if debug then Printf.printf "using fallback.\n%!";
-                  fallback
-  in
+  let type_of_ident = find_type_and_env ~symbol_linkage_name ~cmt_file ~call_site in
   Printer.value ~depth ~print_sig:true ~type_of_ident ~summary out v
 
 (* CR mshinwell: bad function name *)
@@ -189,7 +192,8 @@ let val_print addr stream ~dwarf_type ~call_site ~summary =
   if debug then begin
     match call_site with
     | Call_site.None -> Printf.printf "no call point info\n%!"
-    | Call_site.Some (file, line) -> Printf.printf "call point: %s:%d\n%!" file line
+    | Call_site.Some (file, line, column) ->
+      Printf.printf "call point: %s:%d:%d\n%!" file line column
   end;
   val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file ~call_site ~summary
 
@@ -206,6 +210,9 @@ let print_type ~dwarf_type ~out =
         Printf.printf "print_type: can't find symbol linkage name\n%!";
       `Unknown
     | Some symbol_linkage_name ->
+      let symbol_linkage_name =
+        strip_parameter_index_from_unique_name symbol_linkage_name
+      in
       if debug then
         Printf.printf "print_type: linkage name='%s'\n%!" symbol_linkage_name;
       let cmt_file = cmt_file_of_source_file_path ~source_file_path in
@@ -240,23 +247,56 @@ external run_function_on_target : Gdb_struct_value.t array -> Gdb.Obj.t
 
 let counter = ref 0
 
-let compile_and_run_expression ~expr_text ~vars_in_scope_names ~vars_in_scope_values
-      ~out =
+let compile_and_run_expression ~expr_text ~source_file_path ~vars_in_scope_human_names
+      ~vars_in_scope_linkage_names ~vars_in_scope_values ~call_site ~out =
   let debug' = debug in
   if debug then
-    Printf.eprintf "text '%s' names %d, values %d\n%!" expr_text
-      (Array.length vars_in_scope_names) (Array.length vars_in_scope_values);
+    Printf.eprintf "srcfile %s text '%s' human_names %d, values %d\n%!"
+      source_file_path expr_text
+      (Array.length vars_in_scope_human_names) (Array.length vars_in_scope_values);
+  (* CR mshinwell: remove hack once this is optionified *)
+  let source_file_path =
+    if String.length source_file_path > 0 then Some source_file_path else None
+  in
+  let cmt_file = cmt_file_of_source_file_path ~source_file_path in
   let open Clflags in
   let open Compenv in
-  assert (Array.length vars_in_scope_names = Array.length vars_in_scope_values);
-  let num_vars = Array.length vars_in_scope_names in
+  assert (Array.length vars_in_scope_human_names = Array.length vars_in_scope_values);
+  assert
+    (Array.length vars_in_scope_human_names = Array.length vars_in_scope_linkage_names);
+  let num_vars = Array.length vars_in_scope_human_names in
   (* CR mshinwell: name clash on [debug] *)
   let base_name = Printf.sprintf "gdb_expr%d" !counter in
   let name = Printf.sprintf "/tmp/%s.ml" base_name in
   let source_file_name = Printf.sprintf "/tmp/%s" base_name in
   let output_name = ref (Some (source_file_name ^ ".cmxs")) in
   let source_file = open_out name in
-  let var_seq = String.concat " " (Array.to_list vars_in_scope_names) in
+  let var_seq = ref "" in
+  let initial_env = ref None in
+  for current_var = 0 to Array.length vars_in_scope_human_names - 1 do
+    let human_name = vars_in_scope_human_names.(current_var) in
+    let symbol_linkage_name = Some vars_in_scope_linkage_names.(current_var) in
+    let arg =
+      (* CR mshinwell: I think what we should actually be doing is taking the typing
+         environment at the point we've stopped at in gdb.  However, since we're only
+         dealing with arguments here rather than locals for the moment, then the types
+         of such must be resolvable via the typing environment of our call point.  This
+         is easy to obtain. *)
+      match find_type_and_env ~symbol_linkage_name ~cmt_file ~call_site with
+      | None -> human_name
+      | Some (type_expr, env) ->
+        initial_env := Some env;
+        ignore ((Format.flush_str_formatter ()) : string);
+        let formatter = Format.str_formatter in
+        Printtyp.reset_and_mark_loops type_expr;
+        Printtyp.type_expr formatter type_expr;
+        Format.pp_print_flush formatter ();
+        Printf.sprintf "(%s : %s)" human_name (Format.flush_str_formatter ())
+    in
+    var_seq := Printf.sprintf "%s %s" !var_seq arg
+  done;
+  let initial_env = !initial_env in
+  let var_seq = !var_seq in
   let get_var_seq =
     let get_var_seq = ref "" in
     for arg_index = 0 to num_vars - 1 do
@@ -268,13 +308,13 @@ let compile_and_run_expression ~expr_text ~vars_in_scope_names ~vars_in_scope_va
     Printf.eprintf "calling var_seq: '%s'\n" var_seq;
     Printf.eprintf "calling get_var_seq: '%s'\n" get_var_seq
   end;
-  output_string source_file (Printf.sprintf "let v %s = (%s);; " var_seq expr_text);
   output_string source_file "external set_result : 'a -> unit = \
-                               \"caml_natdynlink_gdb_set_result\";; ";
+                               \"caml_natdynlink_gdb_set_result\";;\n";
   output_string source_file "external get_var : int -> 'a = \
-                               \"caml_natdynlink_gdb_get_var\";; ";
+                               \"caml_natdynlink_gdb_get_var\";;\n";
+  output_string source_file (Printf.sprintf "let %s = let gdb_expr %s = (%s) in gdb_expr %s;;\n" Cmt_file.distinguished_var_name var_seq expr_text get_var_seq);
   output_string source_file
-    (Printf.sprintf "let () = set_result (v %s);;\n" get_var_seq);
+    (Printf.sprintf "let () = set_result %s;;\n" Cmt_file.distinguished_var_name);
   close_out source_file;
   objfiles := [];
   let opref = output_prefix name in
@@ -284,15 +324,10 @@ let compile_and_run_expression ~expr_text ~vars_in_scope_names ~vars_in_scope_va
     Clflags.dlcode := true;
     Clflags.debug := true;
     Clflags.debug_full := true;
-    Optcompile.implementation ppf name opref;
-    let stamp = 1015
-(*
-      let fresh_ident = Ident.create "foo" in
-      (* CR mshinwell: work out how to do this properly *)
-      fresh_ident.Ident.stamp - 8
-*)
+    Optcompile.implementation ?initial_env ppf name opref;
+    let dwarf_type =
+      Printf.sprintf "__ocaml%s.ml %s" source_file_name Cmt_file.distinguished_var_name
     in
-    let dwarf_type = Printf.sprintf "__ocaml%s.ml v_%d" source_file_name stamp in
   (*  if our_debug then Printf.eprintf "dwarf type '%s'\n%!" dwarf_type; *)
     objfiles := (opref ^ ".cmx") :: !objfiles;
     Compmisc.init_path true;
