@@ -92,6 +92,10 @@ ocaml_dwarf_type_name_indicates_parameter(const char* name)
    [v_call_point_out] is filled with [None] if the lookup failed or
    [Some call_point] upon success, where [call_point] is of type [Call_point.t].
 */
+/* CR-someday mshinwell: We could consider having some kind of unique call point
+   identifier.  However these would have to be allocated during normal compilation,
+   so it isn't clear how we would ensure they are globally unique in any manner more
+   robust than using locations. */
 static void
 find_location_from_return_address(CORE_ADDR return_address, value* v_call_point_out)
 {
@@ -295,10 +299,6 @@ find_location_from_return_address(CORE_ADDR return_address, value* v_call_point_
 
   CAMLreturn0;
 }
-  /* CR-someday mshinwell: We could consider having some kind of unique call point
-     identifier.  However these would have to be allocated during normal compilation,
-     so it isn't clear how we would ensure they are globally unique in any manner more
-     robust than using locations. */
 
 /* A heuristic to try to find the closest (in terms of stack frames) call point of a
    given function that is not itself in the same function.  The idea is to use any such
@@ -537,6 +537,11 @@ gdb_ocaml_support_print_type(struct type* type, struct ui_file* stream)
   CAMLreturn0;
 }
 
+typedef enum {
+  ARGUMENTS,
+  LOCALS
+} arguments_or_locals;
+
 typedef struct {
   int next_index;
   int size;
@@ -544,6 +549,7 @@ typedef struct {
   const char** human_names;
   const char** linkage_names;
   struct value** values;
+  arguments_or_locals stage;
 } vars_for_frame;
 
 static void
@@ -554,32 +560,58 @@ count_block_args(const char* print_name, struct symbol* sym, void* user_data)
 }
 
 static void
-read_block_args(const char* print_name, struct symbol* sym, void* user_data)
+read_block_args(const char* incoming_print_name, struct symbol* sym, void* user_data)
 {
-  struct frame_arg arg;
-  struct frame_arg entry_arg;
+  const char* print_name;
+  const char* linkage_name;
+  struct value* val;
+  int ok;
   vars_for_frame* vars = (vars_for_frame*) user_data;
 
   gdb_assert(vars->next_index >= 0 && vars->next_index < vars->size);
-
-  read_frame_arg(sym, vars->frame, &arg, &entry_arg);
-  if (arg.val && arg.sym && !arg.error) {
-    vars->human_names[vars->next_index] = SYMBOL_PRINT_NAME(arg.sym);
-    vars->linkage_names[vars->next_index] = SYMBOL_LINKAGE_NAME(arg.sym);
-    /* [arg.val], which is an address in the memory space of gdb, might on the target
-       lie in the OCaml heap.  Thus we make sure we can safely encode it as an
-       integer. */
-    if ((((value) arg.val) & 1) == 0) {
-      vars->values[vars->next_index] = arg.val;
-      vars->next_index++;
+  ok = 0;
+  if (vars->stage == ARGUMENTS) {
+    struct frame_arg arg;
+    struct frame_arg entry_arg;
+    read_frame_arg(sym, vars->frame, &arg, &entry_arg);
+    if (arg.val && arg.sym && !arg.error) {
+      /* CR mshinwell: Can we use [sym] instead of [arg.sym]? */
+      print_name = SYMBOL_PRINT_NAME(arg.sym);
+      linkage_name = SYMBOL_LINKAGE_NAME(arg.sym);
+      val = arg.val;
+      ok = 1;
+    }
+    if (arg.error) {
+      xfree(arg.error);
+    }
+    if (entry_arg.error) {
+      xfree(entry_arg.error);
     }
   }
-
-  if (arg.error) {
-    xfree(arg.error);
+  else if (vars->stage == LOCALS) {
+    struct value* local;
+    local = read_var_value(sym, vars->frame);
+    if (local) {
+      print_name = SYMBOL_PRINT_NAME(sym);
+      linkage_name = SYMBOL_LINKAGE_NAME(sym);
+      val = local;
+      ok = 1;
+    }
   }
-  if (entry_arg.error) {
-    xfree(entry_arg.error);
+  else {
+    gdb_assert(0);
+  }
+
+  if (ok) {
+    /* [val], which is an address in the memory space of gdb, might on the target
+       lie in the OCaml heap.  Thus we make sure we can safely encode it as an
+       integer. */
+    if (((*(value*) value_contents(val)) & 1) == 0) {
+      vars->human_names[vars->next_index] = print_name;
+      vars->linkage_names[vars->next_index] = linkage_name;
+      vars->values[vars->next_index] = val;
+      vars->next_index++;
+    }
   }
 }
 
@@ -609,6 +641,10 @@ gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
     if (current_function != NULL) {
       iterate_over_block_arg_vars(SYMBOL_BLOCK_VALUE(current_function),
                                   count_block_args, &num_args);
+      /* CR mshinwell: rename things that say "args" to "args_and_locals", now that
+         we include locals. */
+      iterate_over_block_local_vars(SYMBOL_BLOCK_VALUE(current_function),
+                                    count_block_args, &num_args);
     }
   }
 
@@ -620,12 +656,16 @@ gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
     vars.human_names = xmalloc(sizeof(const char*) * num_args);
     vars.linkage_names = xmalloc(sizeof(const char*) * num_args);
     vars.values = xmalloc(sizeof(value*) * num_args);
+    vars.stage = ARGUMENTS;
     iterate_over_block_arg_vars(SYMBOL_BLOCK_VALUE(current_function),
                                 read_block_args, &vars);
+    vars.stage = LOCALS;
+    iterate_over_block_local_vars(SYMBOL_BLOCK_VALUE(current_function),
+                                  read_block_args, &vars);
     gdb_assert(vars.next_index <= vars.size);
     if (vars.next_index < vars.size) {
-      /* For the moment we don't allow access to any arguments if the reading of one
-         or more of them failed. */
+      /* For the moment we don't allow access to any arguments or locals if the reading
+         of one or more of them failed. */
       num_args = 0;
     }
     else {
