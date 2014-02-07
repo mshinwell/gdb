@@ -367,7 +367,30 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
       if summary then
         Format.fprintf formatter "<fun>"
       else begin
+        (* First we try to find out what this function is called.  If it's one of
+           the special currying wrappers then we try to look in the closure's environment
+           to find the "real" function pointer. *)
         let pc = Gdb.Target.read_field v 0 in
+        let name = Gdb.Priv.gdb_function_linkage_name_at_pc pc in
+        let is_currying_wrapper =
+          match name with
+          | None -> false  (* if we can't find the name, assume it isn't a wrapper *)
+          | Some name ->
+            let curry = "caml_curry" in
+            let tuplify = "caml_tuplify" in
+            (* CR mshinwell: this could maybe be made more precise *)
+            String.sub name 0 (String.length curry) = curry
+              || String.sub name 0 (String.length tuplify) = tuplify
+        in
+        let pc =
+          if not is_currying_wrapper then
+            pc
+          else
+            (* The "real" function pointer should be the last entry in the environment of
+               the closure. *)
+            let num_fields = Gdb.Obj.size v in
+            Gdb.Target.read_field v (num_fields - 1)
+        in
         match Gdb.Priv.gdb_find_pc_line pc ~not_current:false with
         | None -> Format.fprintf formatter "<fun> (0x%Lx)" pc
         | Some {Gdb.Priv. symtab; line = Some line} ->

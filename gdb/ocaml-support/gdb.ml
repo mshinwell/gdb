@@ -34,6 +34,10 @@ module Priv = struct
     addr_end : addr;
   }
 
+  external gdb_function_linkage_name_at_pc
+    : addr -> string option
+    = "ml_gdb_function_linkage_name_at_pc"
+
   external gdb_find_pc_line
     : addr -> not_current:bool -> symtab_and_line option
     = "ml_gdb_find_pc_line"

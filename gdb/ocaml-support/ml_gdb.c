@@ -71,6 +71,26 @@ value ml_gdb_print_filtered (value stream, value buf)
   CAMLreturn (Val_unit);
 }
 
+value ml_gdb_function_linkage_name_at_pc(value core_addr)
+{
+  CAMLparam0();
+  CAMLlocal1(v_function_name);
+  value v_result;
+  const char* function_name;
+  CORE_ADDR func_start, func_end;
+
+  if (!find_pc_partial_function((CORE_ADDR) Target_val(core_addr),
+                                &function_name, &func_start, &func_end)) {
+    CAMLreturn(Val_long(0) /* None */);
+  }
+
+  v_function_name = caml_copy_string(function_name);
+  v_result = caml_alloc_small(1, 0 /* Some */);
+  Field(v_result, 0) = v_function_name;
+
+  CAMLreturn(v_result);
+}
+
 value ml_gdb_find_pc_line (value core_addr, value not_current)
 {
   CAMLparam2 (core_addr, not_current);
