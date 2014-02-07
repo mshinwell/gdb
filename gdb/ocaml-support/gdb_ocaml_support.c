@@ -26,6 +26,8 @@
 #include <caml/callback.h>
 #include <caml/custom.h>
 #include <caml/fail.h>
+#include <caml/stack.h>
+#define Gdb_hash_retaddr(addr,mask) (((uintnat)(addr) >> 3) & mask)
 
 #include "gdb_ocaml_support.h"
 #include "ml_utils.h"
@@ -40,6 +42,11 @@
 
 extern value caml_make_vect (value, value);
 
+static int debug(void)
+{
+  return ((getenv("GOS_DEBUG")) != NULL);
+}
+
 int
 gdb_ocaml_support_init (void)
 {
@@ -50,6 +57,7 @@ gdb_ocaml_support_init (void)
   return 1;
 }
 
+#if 0
 static int
 ocaml_dwarf_type_name_indicates_parameter(const char* name)
 {
@@ -72,7 +80,230 @@ ocaml_dwarf_type_name_indicates_parameter(const char* name)
 
   return 0;
 }
+#endif
 
+/* Attempt to find an accurate location (source file, line number, column number)
+   that corresponds to a call point.  The call point is specified by the return
+   address as seen by the callee.
+
+   The source file and line number are available from the DWARF info via the symtab.
+   The column number is available from the OCaml frame table.
+
+   [v_call_point_out] is filled with [None] if the lookup failed or
+   [Some call_point] upon success, where [call_point] is of type [Call_point.t].
+*/
+static void
+find_location_from_return_address(CORE_ADDR return_address, value* v_call_point_out)
+{
+  struct symtab_and_line symtab_and_line;
+  int line;
+  struct symbol* target_caml_frame_descriptors_symbol;
+  struct symbol* target_caml_frame_descriptors_mask_symbol;
+  struct symbol* target_caml_init_frame_descriptors_symbol;
+  int column = 0;
+  CAMLparam0();
+  CAMLlocal2(v_call_point, v_call_point_source_file);
+
+  *v_call_point_out = Val_long(0); /* Call_point.None */
+
+  /* Find the address of the [caml_frame_descriptors] hashtable in the target's
+     memory.  We also need [caml_frame_descriptors_mask]. */
+  target_caml_frame_descriptors_symbol =
+    lookup_symbol_global("caml_frame_descriptors", NULL, VAR_DOMAIN);
+  target_caml_frame_descriptors_mask_symbol =
+    lookup_symbol_global("caml_frame_descriptors_mask", NULL, VAR_DOMAIN);
+  if (target_caml_frame_descriptors_symbol
+        && target_caml_frame_descriptors_mask_symbol) {
+    CORE_ADDR target_caml_frame_descriptors;
+    int target_caml_frame_descriptors_mask;
+
+    target_caml_frame_descriptors_mask =
+      *(int*) value_contents(value_of_variable(
+        target_caml_frame_descriptors_mask_symbol, NULL));
+
+    /* If [target_caml_frame_descriptors_mask] is zero then it's probably the case
+       that [caml_init_frame_descriptors] has not been run.  If this appears to be the
+       case then run that function on the target.  It should be safe to do this
+       anywhere---the function is guarded internally against being run multiple times,
+       and if does actually do the main body of work, it shouldn't rely on any state
+       external to it anyway (thus, it should be safe to run even if in the middle of
+       some random runtime function).
+    */
+    /* CR-someday mshinwell: we could consider examining caml_frametable[...] directly
+       to avoid having to do this.  This could in fact be done without actually having
+       to interrogate target memory (just read it from the executable image). */
+    /* CR-someday mshinwell: another approach would be to write a runtime function that
+       could be called on the target to do this work. */
+    if (target_caml_frame_descriptors_mask == 0) {
+      if (debug()) {
+        fprintf(stderr, "caml_frame_descriptors not initialized\n");
+      }
+      target_caml_init_frame_descriptors_symbol =
+        lookup_symbol_global("caml_init_frame_descriptors", NULL, VAR_DOMAIN);
+      if (target_caml_init_frame_descriptors_symbol) {
+        struct value* target_caml_init_frame_descriptors;
+        target_caml_init_frame_descriptors =
+          address_of_variable(target_caml_init_frame_descriptors_symbol, NULL);
+        if (target_caml_init_frame_descriptors) {
+          if (debug()) {
+            fprintf(stderr, "calling caml_init_frame_descriptors on the target\n");
+          }
+          (void) call_function_by_hand(target_caml_init_frame_descriptors, 0, NULL);
+          /* With luck, re-reading the mask will now give the initialized value. */
+          target_caml_frame_descriptors_mask =
+            *(int*) value_contents(value_of_variable(
+              target_caml_frame_descriptors_mask_symbol, NULL));
+        }
+      }
+    }
+
+    if (target_caml_frame_descriptors_mask != 0) {
+      target_caml_frame_descriptors =
+        *(CORE_ADDR*)
+          value_contents(value_of_variable(target_caml_frame_descriptors_symbol, NULL));
+      if (debug()) {
+        fprintf(stderr, "caml_frame_descriptors=%p\n",
+          (void*) target_caml_frame_descriptors);
+      }
+    }
+
+    if (target_caml_frame_descriptors_mask != 0 && target_caml_frame_descriptors) {
+      CORE_ADDR return_address_hash;
+      CORE_ADDR frame_descr_ptr;
+      int try;
+      int found;
+      int failed;
+      frame_descr descr;
+      const int max_tries = 10000;
+
+      return_address_hash =
+        Gdb_hash_retaddr(return_address, target_caml_frame_descriptors_mask);
+
+      try = 0;
+      found = 0;
+      failed = 0;
+      while (!found && !failed && try++ < max_tries) {
+        CORE_ADDR frame_descr_ptr_addr;
+
+        /* Calculate the address of the hashtable bucket. */
+        frame_descr_ptr_addr = (CORE_ADDR)
+          (((unsigned char*) target_caml_frame_descriptors)
+           + sizeof(frame_descr*)*return_address_hash);
+        if (debug()) {
+          fprintf(stderr, "fdpa=%p ra=%p rah=%p\n",
+            (void*) frame_descr_ptr_addr,
+            (void*) return_address,
+            (void*) return_address_hash);
+        }
+
+        /* Read the pointer to the frame descriptor from the hashtable. */
+        if (!target_read_memory(frame_descr_ptr_addr, (gdb_byte*) &frame_descr_ptr,
+                                sizeof(frame_descr_ptr))) {
+          /* Now read the frame descriptor itself. */
+          if (!target_read_memory(frame_descr_ptr, (gdb_byte*) &descr, sizeof(descr))) {
+            if (debug()) {
+              fprintf(stderr, "examining possible f.descr with ra=%p (want %p)\n",
+                      (void*) descr.retaddr, (void*) return_address);
+            }
+            if (descr.retaddr == return_address) {
+              found = 1;
+            }
+            else {
+              return_address_hash =  /* Hash collision; move to the next bucket. */
+                (return_address_hash + 1) & target_caml_frame_descriptors_mask;
+            }
+          }
+          else {
+            if (debug()) {
+              fprintf(stderr, "read of frame descr (from %p) failed\n",
+                      (void*) frame_descr_ptr);
+            }
+            failed = 1;
+          }
+        }
+        else {
+          if (debug()) {
+            fprintf(stderr, "read of frame descr ptr (from %p) failed\n",
+                    (void*) frame_descr_ptr_addr);
+          }
+          failed = 1;
+        }
+      }
+
+      if (debug()) {
+        fprintf(stderr, "looking for return address %p\n", (void*) return_address);
+        fprintf(stderr, "found = %d\n", found);
+      }
+
+      if (found && !failed && try < max_tries
+            && ((descr.frame_size & 1) == 1) /* ensure -g was used */) {
+        /* This follows [extract_location_info] (asmrun/backtrace.c) in the runtime.
+           We can't directly use that function since the info words have to be read from
+           the target. */
+        CORE_ADDR info2ptr;
+        uint32 info2;
+
+        info2ptr = (CORE_ADDR) ((((uintnat) frame_descr_ptr +
+            sizeof(char*) + sizeof(short) + sizeof(short) +
+            sizeof(short) * descr.num_live + sizeof(frame_descr*) - 1)
+          & -sizeof(frame_descr*)) + sizeof(uint32) /* <-- this moves us to info2 */);
+        if (!target_read_memory(info2ptr, (gdb_byte*) &info2, sizeof(info2))) {
+          int line_from_frame_descr;
+
+          /* Extract the line number and the column number from the frame descriptor.
+             Either or both of these may be truncated (see below). */
+          line_from_frame_descr = info2 >> 12;
+          column = (info2 >> 4) & 0xFF;
+
+          /* Extract the source file and line number from the symtab.  (The line number
+             in the frame descriptor might be truncated, so we prefer the one from
+             the symtab.) */
+          symtab_and_line = find_pc_line(return_address, 0);
+          line = symtab_and_line.line;
+
+          if (debug()) {
+            fprintf(stderr, "source file %s st line %d fd line %d fd column %d\n",
+                    symtab_and_line.symtab->filename, line, line_from_frame_descr,
+                    column);
+          }
+
+          /* If [column] is [0xff], it was likely truncated, so we don't attempt any
+             lookup since we might have the wrong location.  We also check that the
+             portion of the line number that definitely is not truncated in the frame
+             descriptor matches the corresponding portion of the line number from the
+             symtab.  (See asmcomp/emitaux.ml:emit_frames for the masks.) */
+          if (line > 0 && column < 0xff
+                && ((line_from_frame_descr & 0xfffff) == (line & 0xfffff))) {
+            /* CR mshinwell: what happens if we have more than one source file with
+               the same name? */
+            char* filename = symtab_and_line.symtab->filename;
+            gdb_assert(filename != NULL);  /* cf. symtab.h */
+            v_call_point_source_file = caml_copy_string(filename);
+            v_call_point = caml_alloc_small(3, 0 /* Call_point.Some */);
+            Field(v_call_point, 0) = v_call_point_source_file;
+            Field(v_call_point, 1) = Val_long(line);
+            Field(v_call_point, 2) = Val_long(column);
+            if (debug()) {
+              fprintf(stderr, "location found successfully\n");
+            }
+            *v_call_point_out = v_call_point;
+          }
+        }
+      }
+    }
+  }
+
+  CAMLreturn0;
+}
+  /* CR-someday mshinwell: We could consider having some kind of unique call point
+     identifier.  However these would have to be allocated during normal compilation,
+     so it isn't clear how we would ensure they are globally unique in any manner more
+     robust than using locations. */
+
+/* A heuristic to try to find the closest (in terms of stack frames) call point of a
+   given function that is not itself in the same function.  The idea is to use any such
+   call point to determine the instantiations of type variables when the given function
+   is polymorphic.  The heuristic is very rough. */
 static void
 try_to_find_call_point_of_frame(struct frame_info* selected_frame,
                                 value* v_call_point_out)
@@ -82,13 +313,10 @@ try_to_find_call_point_of_frame(struct frame_info* selected_frame,
   struct symbol* original_function;
   int depth;
   int stop;
-  CAMLparam0();
-  CAMLlocal2(v_call_point, v_call_point_source_file);
 
   stop = 0;
   depth = 0;
   return_address = 0;
-  *v_call_point_out = Val_long(0); /* Call_point.None */
 
   pc_in_original_selected_frame = get_frame_pc(selected_frame);
   original_function = find_pc_function(pc_in_original_selected_frame);
@@ -126,48 +354,12 @@ try_to_find_call_point_of_frame(struct frame_info* selected_frame,
   }
 
   /* If we've found a return address, determine the name of the call point to which
-     it corresponds, so that we can find its type information in the .cmt file. */
-  /* CR mshinwell: try to fix gdb to know about column numbers (which are in the
-     DWARF information), or find a less awful way of doing this, such as a
-     separate table. */
+     it corresponds, so that we can find its type information in the .cmt file.
+     Unlike the rest of this function, this part is not a heuristic.
+  */
   if (return_address) {
-    const char* call_point_symbol_name;
-    CORE_ADDR call_point_symbol_start_addr;
-    CORE_ADDR call_point_symbol_end_addr;
-    struct symtab_and_line symtab_and_line;
-    int line;
-    int column = 0;
-
-    if (find_pc_partial_function(return_address, &call_point_symbol_name,
-                                 &call_point_symbol_start_addr,
-                                 &call_point_symbol_end_addr)) {
-      const char* char_pos;
-      char_pos = strrchr(call_point_symbol_name, '_');
-      if (char_pos && char_pos[1] != '\0') {
-        column = atoi(&char_pos[1]);
-      }
-    }
-
-    /* Recover the source file and line number by more orthodox methods. */
-    symtab_and_line = find_pc_line(return_address, 0);
-    line = symtab_and_line.line;
-    if (line > 0) {
-      /* CR mshinwell: what happens if we have more than one source file with
-         the same name? */
-      /* CR mshinwell: could encode more information in the call point symbol... */
-      char* filename = symtab_and_line.symtab->filename;
-      gdb_assert(filename != NULL);  /* cf. symtab.h */
-      v_call_point_source_file = caml_copy_string(filename);
-      v_call_point = caml_alloc_small(3, 0 /* Call_point.Some */);
-      Field(v_call_point, 0) = v_call_point_source_file;
-      Field(v_call_point, 1) = Val_long(line);
-      Field(v_call_point, 2) = Val_long(column);
-    }
+    find_location_from_return_address(return_address, v_call_point_out);
   }
-
-  *v_call_point_out = v_call_point;
-
-  CAMLreturn0;
 }
 
 static void
