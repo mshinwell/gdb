@@ -732,13 +732,13 @@ gdb_ocaml_support_run_function_on_target(value v_var_args)
   veneer = lookup_symbol_global("caml_natdynlink_gdb_run", NULL, VAR_DOMAIN);
   if (!veneer) {
     fprintf(stderr, "Failed to find expression evaluation entry point (1)\n");
-    return Val_unit;
+    return caml_copy_int64 (-1);
   }
 
   veneer_func = address_of_variable(veneer, NULL);
   if (!veneer_func) {
     fprintf(stderr, "Failed to find expression evaluation entry point (2)\n");
-    return Val_unit;
+    return caml_copy_int64 (-2);
   }
 
   num_args = Wosize_val(v_var_args);

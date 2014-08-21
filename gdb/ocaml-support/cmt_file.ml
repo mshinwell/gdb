@@ -304,7 +304,10 @@ let load ~filename =
             | dirname -> [dirname]
           in
           Config.load_path :=
-            (List.map (fun leaf -> Filename.concat cmt_infos.Cmt_format.cmt_builddir leaf)
+            (List.map (fun leaf ->
+              if Filename.is_relative leaf then
+                Filename.concat cmt_infos.Cmt_format.cmt_builddir leaf
+              else leaf)
               cmt_infos.Cmt_format.cmt_loadpath) @ extra_load_path;
           if debug then begin
             Printf.printf "cmt_builddir=%s\n%!" cmt_infos.Cmt_format.cmt_builddir;

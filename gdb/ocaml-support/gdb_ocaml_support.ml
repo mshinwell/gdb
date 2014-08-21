@@ -332,8 +332,7 @@ let compile_and_run_expression ~expr_text ~source_file_path ~vars_in_scope_human
     Clflags.dlcode := true;
     Clflags.debug := true;
     Clflags.debug_full := true;
-    (* XXX need to set initial env *)
-    Optcompile.implementation ppf name opref;
+    Optcompile.implementation ?initial_env ppf name opref;
     let dwarf_type =
       Printf.sprintf "__ocaml%s.ml %s" source_file_name Cmt_file.distinguished_var_name
     in
@@ -344,10 +343,12 @@ let compile_and_run_expression ~expr_text ~source_file_path ~vars_in_scope_human
     Asmlink.link_shared ppf (get_objfiles ()) target;
     Warnings.check_fatal ();
     let result = run_function_on_target vars_in_scope_values in
-    incr counter;
-    val_print result out ~dwarf_type ~call_site:Call_site.None ~summary:false;
-    Gdb.print out "\n"
-    (* CR mshinwell: remove temp files *)
+    if Gdb.Obj.int result >= 0 (* CR mshinwell: not 32-bit safe *) then begin
+      incr counter;
+      val_print result out ~dwarf_type ~call_site:Call_site.None ~summary:false;
+      Gdb.print out "\n"
+      (* CR mshinwell: remove temp files *)
+    end
   with exn ->
     Opterrors.report_error ppf exn
 
