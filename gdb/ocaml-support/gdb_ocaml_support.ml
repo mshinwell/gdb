@@ -152,6 +152,9 @@ let decode_dwarf_type dwarf_type =
   if String.length dwarf_type <= String.length magic then
     None, None
   else
+    (* CR mshinwell: we should be able to work out what the source file path was
+       by reading the compilation unit DIE.  Then we can remove the propagation of it
+       via the DWARF types. *)
     let delimiter =
       try Some (String.rindex dwarf_type ' ') with Not_found -> None
     in
@@ -176,15 +179,20 @@ let decode_dwarf_type dwarf_type =
 let cmt_file_of_source_file_path ~source_file_path =
   (* CR mshinwell: This desperately needs to cache the result. *)
   match source_file_path with
-  | None -> Cmt_file.create_null ()
+  | None ->
+    if debug then Printf.printf "not looking for cmt (no source file path)\n%!";
+    Cmt_file.create_null ()
   | Some source_file_path ->
     if String.length source_file_path > 3
       && Filename.check_suffix source_file_path ".ml"
-    then
+    then begin
       let filename = Filename.chop_extension source_file_path ^ ".cmt" in
+      if debug then Printf.printf "looking for cmt: %s\n%!" filename;
       Cmt_file.load ~filename
-    else
+    end else begin
+      if debug then Printf.printf "not looking for cmt\n%!";
       Cmt_file.create_null ()
+    end
 
 let val_print addr stream ~dwarf_type ~call_site ~summary =
   let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
@@ -324,7 +332,8 @@ let compile_and_run_expression ~expr_text ~source_file_path ~vars_in_scope_human
     Clflags.dlcode := true;
     Clflags.debug := true;
     Clflags.debug_full := true;
-    Optcompile.implementation ?initial_env ppf name opref;
+    (* XXX need to set initial env *)
+    Optcompile.implementation ppf name opref;
     let dwarf_type =
       Printf.sprintf "__ocaml%s.ml %s" source_file_name Cmt_file.distinguished_var_name
     in

@@ -24,14 +24,15 @@ let extract_non_constant_ctors ~cases =
   let non_constant_ctors, _ =
     List.fold_left cases
       ~init:([], 0)
-      ~f:(fun (non_constant_ctors, next_ctor_number) (ident, args, _return_type) ->
-            match args with
+      ~f:(fun (non_constant_ctors, next_ctor_number) ctor_decl ->
+            let ident = ctor_decl.Types.cd_id in
+            match ctor_decl.Types.cd_args with
             | [] ->
               non_constant_ctors, next_ctor_number
             | _ ->
               (* CR mshinwell: check [return_type] is just that, and use it.  Presumably
                  for GADTs. *)
-              (next_ctor_number, (ident, args))::non_constant_ctors,
+              (next_ctor_number, (ident, ctor_decl.Types.cd_args))::non_constant_ctors,
                 next_ctor_number + 1)
   in
   non_constant_ctors
@@ -40,8 +41,9 @@ let extract_constant_ctors ~cases =
   let constant_ctors, _ =
     List.fold_left cases
       ~init:([], 0)
-      ~f:(fun (constant_ctors, next_ctor_number) (ident, args, _return_type) ->
-            match args with
+      ~f:(fun (constant_ctors, next_ctor_number) ctor_decl ->
+            let ident = ctor_decl.Types.cd_id in
+            match ctor_decl.Types.cd_args with
             | [] ->
               (Int64.of_int next_ctor_number, ident)::constant_ctors, next_ctor_number + 1
             | _ ->
@@ -84,6 +86,7 @@ let print_int value ~type_of_ident ~formatter =
                 default ()
             else
               default ()
+          | Types.Type_open -> default ()  (* Not thought about *)
           | Types.Type_abstract
           | Types.Type_record _ ->
             (* Neither of these are expected. *)
@@ -205,6 +208,7 @@ let rec identify_value type_expr env =
         end
       | Types.Type_record (field_decls, record_repr) ->
         `Record (path, args, field_decls, record_repr)
+      | Types.Type_open -> `Something_else  (* not thought about *)
     end
   | Types.Tlink type_expr -> identify_value type_expr env
   | Types.Ttuple component_types -> `Tuple component_types
@@ -275,7 +279,8 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
                 ~type_of_ident:(Some (ty, env)) ~summary ~formatter v
             )
           in
-          default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true ~formatter v
+          default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true
+            ~formatter v
       | `Record (path, args, field_decls, record_repr) ->
         let field_decls = Array.of_list field_decls in
         if Array.length field_decls <> Gdb.Obj.size v then
@@ -284,7 +289,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
           default_printer ~printers:(Lazy.force default_printers) ~formatter v
         else
           if Array.length field_decls = 1
-             && Ident.name (fst3 field_decls.(0)) = "contents"
+             && Ident.name (field_decls.(0).Types.ld_id) = "contents"
              && Path.name path = "Pervasives.ref"
           then begin
             Format.fprintf formatter "ref ";
@@ -300,12 +305,13 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
             Format.fprintf formatter "{...}"
           else
             let fields_helpers =
-              Array.map field_decls ~f:(fun (name, _, ty) ->
+              Array.map field_decls ~f:(fun ld ->
                 let printer v =
-                  value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
+                  value ~depth:(succ depth)
+                    ~type_of_ident:(Some (ld.Types.ld_type, env))
                     ~print_sig:false ~summary ~formatter v
                 in
-                Ident.name name, printer
+                Ident.name ld.Types.ld_id, printer
               )
             in
             record ~fields_helpers ~formatter v

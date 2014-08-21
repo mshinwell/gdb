@@ -69,7 +69,7 @@ let rec process_pattern ~pat ~idents_to_types =
     in
     process_pattern ~pat ~idents_to_types
   | Typedtree.Tpat_tuple pats
-  | Typedtree.Tpat_construct (_, _, pats, _)
+  | Typedtree.Tpat_construct (_, _, pats)
   | Typedtree.Tpat_array pats ->
     List.fold_left pats
       ~init:idents_to_types
@@ -97,11 +97,11 @@ let rec process_pattern ~pat ~idents_to_types =
 and process_expression ~exp ((idents_to_types, app_points) as init) =
   let open Typedtree in
   match exp.exp_desc with
-  | Texp_let (_rec, pat_exp_list, exp) ->
-    let acc = process_pat_exp_list ~pat_exp_list init in
+  | Texp_let (_rec, value_binding, exp) ->
+    let acc = process_value_binding ~value_binding init in
     process_expression ~exp acc
-  | Texp_function (_label, pat_exp_list, _partial) ->
-    process_pat_exp_list ~pat_exp_list init
+  | Texp_function (_label, cases, _partial) ->
+    process_cases ~cases init
   | Texp_apply (exp, args) ->
     let app_points =
       let lst =
@@ -119,11 +119,13 @@ and process_expression ~exp ((idents_to_types, app_points) as init) =
       | None -> acc
       | Some exp -> process_expression ~exp acc
     )
-  | Texp_match (exp, pat_exp_list, _)
-  | Texp_try (exp, pat_exp_list) ->
+  | Texp_match (exp, cases1, cases2, _) ->
     let acc = process_expression ~exp init in
-    process_pat_exp_list ~pat_exp_list acc
-  | Texp_construct (_, _, expr_list, _)
+    process_cases ~cases:cases2 (process_cases ~cases:cases1 acc)
+  | Texp_try (exp, cases) ->
+    let acc = process_expression ~exp init in
+    process_cases ~cases acc
+  | Texp_construct (_, _, expr_list)
     (* Texp_co... (loc, descr, list, "explicit arity":bool)
       * Note: that last bool disappeared on trunk. *)
   | Texp_array expr_list
@@ -142,7 +144,6 @@ and process_expression ~exp ((idents_to_types, app_points) as init) =
     | Some exp -> process_expression ~exp acc
     end
   | Texp_sequence (e1, e2)
-  | Texp_when (e1, e2)
   | Texp_while (e1, e2) ->
     let acc = process_expression ~exp:e1 init in
     process_expression ~exp:e2 acc
@@ -185,12 +186,21 @@ and process_expression ~exp ((idents_to_types, app_points) as init) =
   | Texp_instvar _
   | Texp_setinstvar _
   | Texp_override _
-  | Texp_assertfalse
   | Texp_object _
   | Texp_pack _ -> idents_to_types, app_points
 
-and process_pat_exp_list ~pat_exp_list init =
-  List.fold_left pat_exp_list ~init ~f:(fun acc (pat, exp) ->
+and process_cases ~cases init =
+  List.fold_left cases ~init ~f:(fun acc case ->
+    let pat = case.Typedtree.c_lhs in
+    let exp = case.Typedtree.c_rhs in
+    let idents_to_types, app_points = process_expression ~exp acc in
+    process_pattern ~pat ~idents_to_types, app_points
+  )
+
+and process_value_binding ~value_binding init =
+  List.fold_left value_binding ~init ~f:(fun acc value_binding ->
+    let pat = value_binding.Typedtree.vb_pat in
+    let exp = value_binding.Typedtree.vb_expr in
     let idents_to_types, app_points = process_expression ~exp acc in
     process_pattern ~pat ~idents_to_types, app_points
   )
@@ -214,26 +224,27 @@ and process_implementation ~structure ~idents_to_types ~app_points =
     ~init:(idents_to_types, app_points)
     ~f:(fun maps str_item ->
           match str_item.Typedtree.str_desc with
-          | Typedtree.Tstr_value (_rec, pat_exp_list) ->
-            process_pat_exp_list ~pat_exp_list maps
-          | Typedtree.Tstr_eval exp ->
+          | Typedtree.Tstr_value (_rec, value_binding) ->
+            process_value_binding ~value_binding maps
+          | Typedtree.Tstr_eval (exp, _) ->
             process_expression ~exp maps
-          | Typedtree.Tstr_module (_id, _loc, mod_expr) ->
-            process_module_expr ~mod_expr maps
+          | Typedtree.Tstr_module module_binding ->
+            process_module_expr ~mod_expr:module_binding.Typedtree.mb_expr maps
           | Typedtree.Tstr_recmodule lst ->
             List.fold_left lst ~init:(idents_to_types, app_points) ~f:(
-              fun maps (_id, _loc, _mod_type, mod_expr) ->
-                process_module_expr ~mod_expr maps
+              fun maps module_binding ->
+                process_module_expr ~mod_expr:module_binding.Typedtree.mb_expr maps
             )
           | Typedtree.Tstr_primitive _
           | Typedtree.Tstr_type _
           | Typedtree.Tstr_exception _
-          | Typedtree.Tstr_exn_rebind _
           | Typedtree.Tstr_modtype _
           | Typedtree.Tstr_open _
           | Typedtree.Tstr_class _
           | Typedtree.Tstr_class_type _
-          | Typedtree.Tstr_include _ -> maps)
+          | Typedtree.Tstr_include _
+          | Typedtree.Tstr_attribute _
+          | Typedtree.Tstr_typext _ -> maps)
 
 let create_idents_to_types_map ~cmt_infos =
   let cmt_annots = cmt_infos.Cmt_format.cmt_annots in

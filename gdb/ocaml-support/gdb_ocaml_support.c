@@ -26,7 +26,7 @@
 #include <caml/callback.h>
 #include <caml/custom.h>
 #include <caml/fail.h>
-#include <caml/stack.h>
+#include <caml/../asmrun/stack.h>
 #define Gdb_hash_retaddr(addr,mask) (((uintnat)(addr) >> 3) & mask)
 
 #include "gdb_ocaml_support.h"

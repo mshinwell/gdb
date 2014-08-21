@@ -4,7 +4,7 @@ OCAMLOPT=ocamlopt
 
 OCAML_LIB=`ocamlc -where`
 
-CFLAGS='-I .. -I ../common -I ../../include -ggdb'
+CFLAGS='-I .. -I ../common -I ../../include -ggdb -I../../../mshinwell-ocaml/stdlib/'
 OCAMLFLAGS=-I $(OCAML_LIB)/compiler-libs
 SRC=gdb_ocaml_support.c ml_gdb.c std.ml gdb.ml \
     cmt_file.mli cmt_file.ml demangle.ml printer.ml gdb_ocaml_support.ml
