@@ -259,91 +259,116 @@ let create_idents_to_types_map ~cmt_infos =
     process_implementation ~structure ~idents_to_types:String.Map.empty
       ~app_points:LocTable.empty
 
-let load ~filename =
-  if debug then Printf.printf "attempting to load cmt file: %s\n%!" filename;
-  let cmi_infos, cmt_infos =
-    try
-      Cmt_format.read filename
-    with Sys_error _ ->
-      None, None
-  in
-  let idents_to_types, application_points =
-    match cmt_infos with
-    | None -> String.Map.empty, LocTable.empty
-    | Some cmt_infos ->
-      let () =
-        (* restores load path: needs to be done before calling
-           [Env.env_of_only_summary] otherwise an exception will be thrown when
-           trying to open "distant" modules.
-           By restoring the load_path used when compiling this file [Env] then
-           knows where to find such "distant" modules. *)
-        (* CR trefis: do we really want to concat with [!Config.load_path] here?
-           There might be garbage in it (and we restore it when we're done, so it's
-           *really* likely there will be garbage in it).
-
-           mshinwell: temporarily commented out
-        *)
-        let extra_load_path =
-          match Filename.dirname filename with
-          | "" -> []
-          | dirname -> [dirname]
-        in
-        Config.load_path :=
-          cmt_infos.Cmt_format.cmt_loadpath (* @ !Config.load_path *) @ extra_load_path;
-        if debug then
-          Printf.printf "the load path will be: %s\n%!"
-            (String.concat !Config.load_path ~sep:":")
+(*
+let search_load_path ~load_path ~module_name =
+  let load_path = String.split load_path ~on:':' in
+  let rec test_existence = function
+    | [] -> failwith (Printf.sprintf "cmt file for module '%s' not found" module_name)
+    | dir::dirs ->
+      let path =
+        Filename.concat dir (Printf.sprintf "%s.cmt" (String.lowercase module_name))
       in
-      let idents, app_points = create_idents_to_types_map ~cmt_infos in
+      if Sys.file_exists path then path
+      else test_existence dirs
+*)
+
+let load ~filename =
+  try Hashtbl.find cache filename
+  with Not_found ->
+    if debug then Printf.printf "attempting to load cmt file: %s\n%!" filename;
+    let cmi_infos, cmt_infos =
       try
-        let idents =
-          String.Map.map (fun (type_expr, env) ->
-            type_expr, Env.env_of_only_summary Envaux.env_from_summary env
-          ) idents
+        Cmt_format.read filename
+      with Sys_error _ ->
+        None, None
+    in
+    let idents_to_types, application_points =
+      match cmt_infos with
+      | None -> String.Map.empty, LocTable.empty
+      | Some cmt_infos ->
+        let () =
+          (* restores load path: needs to be done before calling
+             [Env.env_of_only_summary] otherwise an exception will be thrown when
+             trying to open "distant" modules.
+             By restoring the load_path used when compiling this file [Env] then
+             knows where to find such "distant" modules. *)
+          (* CR trefis: do we really want to concat with [!Config.load_path] here?
+             There might be garbage in it (and we restore it when we're done, so it's
+             *really* likely there will be garbage in it).
+
+             mshinwell: temporarily commented out
+          *)
+          let extra_load_path =
+            match Filename.dirname filename with
+            | "" -> []
+            | dirname -> [dirname]
+          in
+          Config.load_path :=
+            (List.map (fun leaf -> Filename.concat cmt_infos.Cmt_format.cmt_builddir leaf)
+              cmt_infos.Cmt_format.cmt_loadpath) @ extra_load_path;
+          if debug then begin
+            Printf.printf "cmt_builddir=%s\n%!" cmt_infos.Cmt_format.cmt_builddir;
+            Printf.printf "the load path will be: %s\n%!"
+              (String.concat "," !Config.load_path)
+          end
         in
-        let app_points =
-          LocTable.map (fun (type_expr, env) ->
-            type_expr, Env.env_of_only_summary Envaux.env_from_summary env
-          ) app_points
-        in
-        let distinguished_ident =
-          let ident = ref None in
-          String.Map.iter
-            (fun candidate type_expr_and_env -> 
-              try
-                if String.sub candidate 0 (String.length distinguished_var_name)
-                  = distinguished_var_name
-                then begin
-                  ident := Some (candidate, type_expr_and_env)
-                end
-              with _exn -> ())
-            idents;
-          !ident
-        in
-        let idents =
-          (* CR mshinwell: work out a proper solution to this problem *)
-          match distinguished_ident with
-          | None -> idents
-          | Some (_ident, type_expr_and_env) ->
-            String.Map.add distinguished_var_name type_expr_and_env idents
-        in
-        idents, app_points
-      with exn -> begin
-        if debug then
-          Printf.printf "exception whilst reading cmt file(s): %s\n%!"
-            (Printexc.to_string exn);
-        String.Map.empty, LocTable.empty
-      end
-  in 
-  let t = {
-    cmi_infos ;
-    cmt_infos ;
-    idents_to_types ;
-    application_points ;
-  }
-  in
-  Hashtbl.add cache filename t ;
-  t
+        let idents, app_points = create_idents_to_types_map ~cmt_infos in
+        try
+          let idents =
+            String.Map.map (fun (type_expr, env) ->
+              type_expr, Env.env_of_only_summary Envaux.env_from_summary env
+            ) idents
+          in
+          let app_points =
+            LocTable.map (fun (type_expr, env) ->
+              type_expr, Env.env_of_only_summary Envaux.env_from_summary env
+            ) app_points
+          in
+          let distinguished_ident =
+            let ident = ref None in
+            String.Map.iter
+              (fun candidate type_expr_and_env -> 
+                try
+                  if String.sub candidate 0 (String.length distinguished_var_name)
+                    = distinguished_var_name
+                  then begin
+                    ident := Some (candidate, type_expr_and_env)
+                  end
+                with _exn -> ())
+              idents;
+            !ident
+          in
+          let idents =
+            (* CR mshinwell: work out a proper solution to this problem *)
+            match distinguished_ident with
+            | None -> idents
+            | Some (_ident, type_expr_and_env) ->
+              String.Map.add distinguished_var_name type_expr_and_env idents
+          in
+          idents, app_points
+        with
+        | Envaux.Error (Envaux.Module_not_found path) -> begin
+          if debug then begin
+            Printf.printf "cmt load failed: module '%s' missing\n%!" (Path.name path)
+          end;
+          String.Map.empty, LocTable.empty
+        end
+        | exn -> begin
+          if debug then
+            Printf.printf "exception whilst reading cmt file(s): %s\n%!"
+              (Printexc.to_string exn);
+          String.Map.empty, LocTable.empty
+        end
+    in 
+    let t = {
+      cmi_infos ;
+      cmt_infos ;
+      idents_to_types ;
+      application_points ;
+    }
+    in
+    Hashtbl.add cache filename t ;
+    t
 
 let type_of_ident t ~unique_name =
   try Some (String.Map.find unique_name t.idents_to_types)
