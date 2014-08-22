@@ -2,7 +2,7 @@
 (*                                                                     *)
 (*                 Debugger support library for OCaml                  *)
 (*                                                                     *)
-(*  Copyright 2013, Jane Street Holding                                *)
+(*  Copyright 2013--2014, Jane Street Holding                          *)
 (*                                                                     *)
 (*  Licensed under the Apache License, Version 2.0 (the "License");    *)
 (*  you may not use this file except in compliance with the License.   *)
@@ -89,7 +89,12 @@ let demangle mangled_name =
     | None -> None
     | Some after_last_significant_dot ->
       if String.is_prefix after_last_significant_dot ~prefix:".ocaml"
-         || is_legacy_name after_last_significant_dot then
+         || is_legacy_name after_last_significant_dot
+         || (* A module component starting with a number must be a compiler-generated
+               symbol (e.g. one for structured data). *)
+            (String.length after_last_significant_dot > 0
+              && let c = String.get after_last_significant_dot 0 in
+                 Char.code c >= Char.code '0' && Char.code c <= Char.code '9') then
         None
       else begin
         let unstamped = String.drop_stamp maybe_stamped in
