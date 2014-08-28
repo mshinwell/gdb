@@ -97,7 +97,19 @@ let print_int value ~type_of_ident ~formatter =
           default ()
         end
       | Types.Tvariant row_desc ->
-        Format.fprintf formatter "Tvariant"
+        let ctor_names_and_hashes =
+          let labels = List.map row_desc.Types.row_fields ~f:fst in
+          List.map labels ~f:(fun label -> label, Btype.hash_variant label)
+        in
+        let desired_hash = Gdb.Obj.int value in
+        let matches =
+          List.filter ctor_names_and_hashes
+            ~f:(fun (ctor_name, hash) -> hash = desired_hash)
+        in
+        begin match matches with
+        | [(ctor_name, _hash)] -> Format.fprintf formatter "`%s" ctor_name
+        | _::_ | [] -> Format.fprintf formatter "`0x%x?" desired_hash
+        end
       | Types.Tvar _ ->
         default ();
         Format.fprintf formatter "?"
@@ -171,7 +183,7 @@ let list ~print_element ~formatter l =
         Format.fprintf formatter "<list element read failed>"
     end
   in
-  Format.fprintf formatter "@[[<hv>" ; aux l ; Format.fprintf formatter "]@]"
+  Format.fprintf formatter "@[<hv>[" ; aux l ; Format.fprintf formatter "]@]"
 
 let record ~fields_helpers ~formatter r =
   let nb_fields = Gdb.Obj.size r in
@@ -313,9 +325,13 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
               )
             in
             if depth = 0 && Array.length field_decls > 1 then begin
-              Format.pp_print_newline formatter ()
+              Format.pp_print_newline formatter ();
+              Format.fprintf formatter "@[<v>  "
             end;
-            record ~fields_helpers ~formatter v
+            record ~fields_helpers ~formatter v;
+            if depth = 0 && Array.length field_decls > 1 then begin
+              Format.fprintf formatter "@]"
+            end;
       | `Constructed_value (cases, args) ->
         let non_constant_ctors = extract_non_constant_ctors cases in
         let ctor_info =
