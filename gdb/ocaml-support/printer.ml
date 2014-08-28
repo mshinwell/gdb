@@ -2,7 +2,7 @@
 (*                                                                     *)
 (*                 Debugger support library for OCaml                  *)
 (*                                                                     *)
-(*  Copyright 2013, Jane Street Holding                                *)
+(*  Copyright 2013--2014, Jane Street Holding                          *)
 (*                                                                     *)
 (*  Licensed under the Apache License, Version 2.0 (the "License");    *)
 (*  you may not use this file except in compliance with the License.   *)
@@ -62,7 +62,7 @@ let print_int value ~type_of_ident ~formatter =
   match type_of_ident with
   | None ->
     default ();
-    Format.fprintf formatter "[?]"
+    Format.fprintf formatter "?"
   | Some (type_expr, env) ->
     let rec print_type_expr type_expr =
       match type_expr.Types.desc with
@@ -100,7 +100,7 @@ let print_int value ~type_of_ident ~formatter =
         Format.fprintf formatter "Tvariant"
       | Types.Tvar _ ->
         default ();
-        Format.fprintf formatter "[?]"
+        Format.fprintf formatter "?"
       | Types.Tarrow _ ->
         Format.fprintf formatter ". -> ."
       | Types.Ttuple _ ->
@@ -143,19 +143,18 @@ let default_printer ?prefix ~force_never_like_list ~printers ~formatter value =
     `Looks_like_list
   else begin
     begin match prefix with
-    | None -> Format.fprintf formatter "tag %d: " (Gdb.Obj.tag value)
+    | None -> Format.fprintf formatter "@[<1>[%d: " (Gdb.Obj.tag value)
     (* CR mshinwell: remove dreadful hack *)
     | Some "XXX" -> ()
-    | Some p -> Format.fprintf formatter "%s " p
+    | Some p -> Format.fprintf formatter "@[%s " p
     end;
-    Format.fprintf formatter "(@[";
     for field = 0 to Gdb.Obj.size value - 1 do
       if field > 0 then Format.fprintf formatter ",@;<1 0>";
       try printers.(field) (Gdb.Obj.field value field)
       with Gdb.Read_error _ ->
         Format.fprintf formatter "<field %d read failed>" field
     done;
-    Format.fprintf formatter "@])";
+    Format.fprintf formatter "]@]";
     `Done
   end
 
@@ -172,24 +171,23 @@ let list ~print_element ~formatter l =
         Format.fprintf formatter "<list element read failed>"
     end
   in
-  Format.fprintf formatter "[@[" ; aux l ; Format.fprintf formatter "@]]"
+  Format.fprintf formatter "@[[<hv>" ; aux l ; Format.fprintf formatter "]@]"
 
 let record ~fields_helpers ~formatter r =
   let nb_fields = Gdb.Obj.size r in
-  Format.fprintf formatter "{@[";
+  Format.fprintf formatter "@[<hv 0>{ ";
   for field_nb = 0 to nb_fields - 1 do
-(*    if field_nb > 0 then
-      Format.fprintf formatter ";@;<1 0>";*)
+    if field_nb > 0 then Format.fprintf formatter "@   ";
     try
       let v = Gdb.Obj.field r field_nb in
       let (field_name, printer) = fields_helpers.(field_nb) in
-      Format.fprintf formatter "%s = @[" field_name;
+      Format.fprintf formatter "@[<2>%s@ =@ " field_name;
       printer v;
-      Format.fprintf formatter ";@]@;<1 0>"
+      Format.fprintf formatter ";@]"
     with Gdb.Read_error _ ->
-      Format.fprintf formatter "<field %d read failed>" field_nb
+      Format.fprintf formatter "<could not read field %d>" field_nb
   done;
-  Format.fprintf formatter "@]}"
+  Format.fprintf formatter "@ }@]"
 
 let rec identify_value type_expr env =
   match type_expr.Types.desc with
@@ -250,7 +248,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
             value ~depth:(succ depth) ~print_sig:false ~formatter ~type_of_ident:None ~summary
           in
           list ~print_element ~formatter v;
-          Format.fprintf formatter "[?]"
+          Format.fprintf formatter "?"
         end
     in
     begin match type_of_ident with
@@ -314,6 +312,9 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
                 Ident.name ld.Types.ld_id, printer
               )
             in
+            if depth = 0 && Array.length field_decls > 1 then begin
+              Format.pp_print_newline formatter ()
+            end;
             record ~fields_helpers ~formatter v
       | `Constructed_value (cases, args) ->
         let non_constant_ctors = extract_non_constant_ctors cases in
