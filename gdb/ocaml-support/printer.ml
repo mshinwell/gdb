@@ -20,6 +20,8 @@
 
 open Std
 
+let debug = ref false
+
 let extract_non_constant_ctors ~cases =
   let non_constant_ctors, _ =
     List.fold_left cases
@@ -166,7 +168,11 @@ let default_printer ?prefix ~force_never_like_list ~printers ~formatter value =
       with Gdb.Read_error _ ->
         Format.fprintf formatter "<field %d read failed>" field
     done;
-    Format.fprintf formatter "]@]";
+    begin match prefix with
+    | None -> Format.fprintf formatter "]@]"
+    | Some "XXX" -> ()
+    | Some p -> Format.fprintf formatter "@]"
+    end;
     `Done
   end
 
@@ -208,16 +214,20 @@ let rec identify_value type_expr env =
     | None -> `Type_decl_not_found
     | Some type_decl ->
       (* CR mshinwell: not sure if this is correct, check *)
-      let args = List.combine type_decl.Types.type_params args in
+      let args' = List.combine type_decl.Types.type_params args in
       match type_decl.Types.type_kind with
-      | Types.Type_variant cases -> `Constructed_value (cases, args)
+      | Types.Type_variant cases -> `Constructed_value (cases, args')
       | Types.Type_abstract ->
         begin match type_decl.Types.type_manifest with
-        | None -> `Something_else
+        (* XXX why does Async_unix.Thread_pool.t display the queue with
+           an unknown element type? *)
+        | None when Path.same path Predef.path_array -> `Array (List.hd args)
+        | None when Path.same path Predef.path_list -> `List (List.hd args)
+        | None -> `Abstract path
         | Some ty -> identify_value ty env
         end
       | Types.Type_record (field_decls, record_repr) ->
-        `Record (path, args, field_decls, record_repr)
+        `Record (path, args', field_decls, record_repr)
       | Types.Type_open -> `Something_else  (* not thought about *)
     end
   | Types.Tlink type_expr -> identify_value type_expr env
@@ -233,6 +243,166 @@ let rec identify_value type_expr env =
   | Types.Tpoly _
   | Types.Tpackage _ ->
     `Something_else
+
+(*
+external compilation_directories_for_source_file : leafname:string
+  -> string list
+  = "gdb_ocaml_compilation_directories_for_source_file"
+*)
+
+module T = Typedtree
+
+(* XXX work out how this is going to be set.
+   Even if the tree uses packing, it should be possible to install only the toplevel
+   modules' .cmi and .cmt files, into a distinguished directory. *)
+let cmt_directory = "/mnt/local/sda1/mshinwell/jane-submissions/lib"
+
+let rec print_path = function
+  | Path.Pident ident -> Ident.unique_name ident
+  | Path.Pdot (path, s, _) -> (print_path path) ^ "." ^ "<string: " ^ s ^ " >"
+  | Path.Papply (path1, path2) ->
+    (print_path path1) ^ " applied to " ^ (print_path path2)
+
+let rec find_module_binding ~path ~is_toplevel ~env =
+  if !debug then
+    Printf.printf "find_module_binding: 1. path=%s\n%!" (print_path path);
+  let path = Env.normalize_path None env path in
+  if !debug then
+    Printf.printf "find_module_binding: 2. path=%s\n%!" (print_path path);
+  match path with
+  | Path.Pident ident ->
+    let lowercase_module_name = String.lowercase (Ident.name ident) in
+    let cmt_name = lowercase_module_name ^ ".cmt" in
+    if !debug then
+      Printf.printf "trying to read cmt: %s/%s\n%!" cmt_directory cmt_name;
+    let cmt =
+      try Some (Cmt_format.read (Filename.concat cmt_directory cmt_name))
+      with Sys_error _ -> None
+    in
+    begin match cmt with
+    | Some (_cmi_infos_opt, Some cmt) ->
+      if !debug then Printf.printf "cmt read was successful\n%!";
+      begin match cmt.Cmt_format.cmt_annots with
+      | Cmt_format.Implementation structure ->
+        let mod_binding =
+          { T.
+            mb_id = ident;
+            mb_name = Location.mkloc (Ident.name ident) Location.none;
+            mb_expr =
+              { T.
+                mod_desc = T.Tmod_structure structure;
+                mod_loc = Location.none;
+                mod_type = Types.Mty_ident path;  (* bogus, but unused *)
+                mod_env = env;  (* likewise *)
+                mod_attributes = [];
+              };
+            mb_attributes = [];
+            mb_loc = Location.none;
+          }
+        in
+        `Found_module mod_binding
+      | Cmt_format.Packed (signature, _) ->
+        (* We look for all .cmt files in the same directory at the moment.  Of
+           course, with packing, there may be name clashes.  Perhaps we can
+           avoid those by not supporting packing in the future. *)
+        `Chop
+      | Cmt_format.Interface _
+      | Cmt_format.Partial_implementation _
+      | Cmt_format.Partial_interface _ ->
+        (* CR mshinwell: no idea what to do with these *)
+        `Not_found
+      end
+    | Some _ | None -> `Not_found
+    end
+  | Path.Pdot (path, component, _) ->
+    begin match find_module_binding ~path ~is_toplevel:false ~env with
+    | `Not_found -> `Not_found
+    | `Found_type_decl _ -> assert false
+    | `Chop ->
+      let path = Path.Pident (Ident.create component) in
+      find_module_binding ~path ~is_toplevel:false ~env
+    | `Found_module mod_binding ->
+      if !debug then
+        Printf.printf "find_module_binding: Found_module case\n%!";
+      match mod_binding.T.mb_expr.T.mod_desc with
+      | T.Tmod_structure structure ->
+        let rec traverse_structure ~structure_items =
+          match structure_items with
+          | [] -> `Not_found
+          | structure_item::structure_items ->
+            let rec traverse_modules ~mod_bindings =
+              match mod_bindings with
+              | [] -> `Not_found
+              | mod_binding::mod_bindings ->
+                if (Ident.name mod_binding.T.mb_id) = component then
+                  `Found_module mod_binding
+                else
+                  traverse_modules ~mod_bindings
+            in
+            match structure_item.T.str_desc with
+            | T.Tstr_type type_decls when is_toplevel ->
+              let rec traverse_type_decls ~type_decls =
+                match type_decls with
+                | [] -> `Not_found
+                | type_decl::type_decls ->
+                  if (Ident.name type_decl.T.typ_id) = component then
+                    `Found_type_decl type_decl
+                  else
+                    traverse_type_decls ~type_decls
+              in
+              traverse_type_decls ~type_decls
+            | T.Tstr_module mod_binding when not is_toplevel ->
+              traverse_modules ~mod_bindings:[mod_binding]
+            | T.Tstr_recmodule mod_bindings when not is_toplevel ->
+              traverse_modules ~mod_bindings
+            | _ -> traverse_structure ~structure_items
+        in
+        traverse_structure ~structure_items:structure.T.str_items
+      | T.Tmod_ident (path, _) ->
+        (* This whole function is called when we're trying to find the manifest
+           type for an abstract type.  As such, even if we get here and could
+           look up types via [path] in the environment, we don't---it
+           may well yield another abstract type.  Instead we go straight to
+           the implementation, having used the environment only to normalize
+           the path. *)
+        (* XXX this probably isn't right; we're assuming [path] starts from
+           the toplevel.  Should we prepend our [path] so far (from Pdot)?
+           Then what happens if it was absolute? *)
+        if !debug then
+          Printf.printf "find_module_binding: 3. path=%s\n%!"
+            (print_path path);
+        find_module_binding ~path ~is_toplevel:false ~env
+      | T.Tmod_functor _
+      | T.Tmod_apply _
+      | T.Tmod_constraint _
+      | T.Tmod_unpack _ -> `Not_found  (* CR mshinwell: handle these cases *)
+    end
+  | Path.Papply (path1, path2) ->
+    `Not_found  (* CR mshinwell: handle this case *)
+
+(* Attempt to find the manifest of an abstract type by locating the .cmt file in which
+   the definition of the abstract type is contained and examining the structure
+   definitions therein.  (We don't look at the signatures since a signature within the
+   module might conceal the manifest type.)
+   For the moment, we look for the .cmt file in the directory where we think the
+   corresponding source file lives.  There might be more than one source file with the
+   same name (if using -pack); in this case, we try to load all corresponding .cmt
+   files.
+*)
+let find_manifest_of_abstract_type ~path ~env =
+  if !debug then
+    Printf.printf "finding abstract type: %s\n%!" (print_path path);
+  (* [path] must identify a type declaration.  However, watch out---it may be
+     unqualified. *)
+  (* XXX how do we cope with the unqualified cases?  Built-in types are one,
+     but presumably there may be others?  Not sure. *)
+  match path with
+  | Path.Pident _ -> None
+  | Path.Pdot _ | Path.Papply _ ->
+    match find_module_binding ~path ~is_toplevel:true ~env with
+    | `Not_found | `Chop -> None  (* [`Chop] is "[Foo.t] with [Foo] a pack" *)
+    | `Found_module _ -> assert false
+    | `Found_type_decl type_decl -> Some type_decl
 
 let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v =
 (*  Format.fprintf formatter "@[";*)
@@ -271,109 +441,163 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
         default_printer ~printers:(Lazy.force default_printers) ~formatter v
     | Some (type_expr, env) ->
       (* TODO: move out *)
-      match identify_value type_expr env with
-      | `Type_decl_not_found
-      | `Something_else ->
-        if summary then
-          Format.fprintf formatter "..."
-        else
-          default_printer ~printers:(Lazy.force default_printers) ~formatter v
-      | `Tuple lst ->
-        if summary && (List.length lst > 2 || depth > 0) then
-          Format.fprintf formatter "(...)"
-        else
-          let component_types = Array.of_list lst in
-          let printers =
-            Array.map component_types ~f:(fun ty v ->
-              value ~depth:(succ depth) ~print_sig:false
-                ~type_of_ident:(Some (ty, env)) ~summary ~formatter v
-            )
-          in
-          default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true
-            ~formatter v
-      | `Record (path, args, field_decls, record_repr) ->
-        let field_decls = Array.of_list field_decls in
-        if Array.length field_decls <> Gdb.Obj.size v then
-          (* The record declaration doesn't appear to match the value; just bail out. *)
-          let () = Format.fprintf formatter "<type decl doesn't match value> " in
-          default_printer ~printers:(Lazy.force default_printers) ~formatter v
-        else
-          if Array.length field_decls = 1
-             && Ident.name (field_decls.(0).Types.ld_id) = "contents"
-             && Path.name path = "Pervasives.ref"
-          then begin
-            Format.fprintf formatter "ref ";
-            let contents_type =
-              match args with
-              | [_type_param, contents_type] -> Some (contents_type, env)
-              | _ -> None
-            in
-            value ~depth:(succ depth) ~type_of_ident:contents_type
-              ~print_sig:false ~summary ~formatter (Gdb.Obj.field v 0)
-          end
-          else if summary then
-            Format.fprintf formatter "{...}"
-          else
-            let fields_helpers =
-              Array.map field_decls ~f:(fun ld ->
-                let printer v =
-                  value ~depth:(succ depth)
-                    ~type_of_ident:(Some (ld.Types.ld_type, env))
-                    ~print_sig:false ~summary ~formatter v
-                in
-                Ident.name ld.Types.ld_id, printer
-              )
-            in
-            if depth = 0 && Array.length field_decls > 1 then begin
-              Format.pp_print_newline formatter ();
-              Format.fprintf formatter "@[<v>  "
-            end;
-            record ~fields_helpers ~formatter v;
-            if depth = 0 && Array.length field_decls > 1 then begin
-              Format.fprintf formatter "@]"
-            end;
-      | `Constructed_value (cases, args) ->
-        let non_constant_ctors = extract_non_constant_ctors cases in
-        let ctor_info =
-          try Some (List.assoc tag non_constant_ctors) with Not_found -> None
-        in
-        begin match ctor_info with
-        | None ->
-          default_printer ~printers:(Lazy.force default_printers) ~formatter v
-        | Some (cident, _) when Ident.name cident = "::" && List.length args = 1 ->
+      let identification = identify_value type_expr env in
+      let rec loop identification =
+        match identification with
+        | `Type_decl_not_found
+        | `Something_else ->
           if summary then
-            Format.fprintf formatter "[...]"
-          else
-            let print_element =
-              match args with
-              | [ (_, elements_type) ] ->
-                value ~depth:(succ depth) ~print_sig:false ~formatter
-                  ~type_of_ident:(Some (elements_type, env))
-                  ~summary
-              | _ -> assert false
+            Format.fprintf formatter "..."
+          else begin
+          (*  Format.fprintf formatter "<not found/something else:>"; *)
+            default_printer ~printers:(Lazy.force default_printers) ~formatter v
+          end
+        | `Abstract path ->
+          begin match find_manifest_of_abstract_type ~path ~env with
+          | None -> Format.fprintf formatter "<%s>" (Path.name path)
+          | Some type_decl ->
+            (* XXX this is duplicated from above. *)
+            let identification =
+              let type_decl = type_decl.T.typ_type in
+              match type_expr.Types.desc with
+              | Types.Tconstr (path, args, _abbrev_memo_ref) -> begin
+                  let args = List.combine type_decl.Types.type_params args in
+                  match type_decl.Types.type_kind with
+                  | Types.Type_variant cases -> `Constructed_value (cases, args)
+                  | Types.Type_abstract ->
+                    begin match type_decl.Types.type_manifest with
+                    | None -> `Abstract path
+                    | Some ty -> identify_value ty env
+                    end
+                  | Types.Type_record (field_decls, record_repr) ->
+                    `Record (path, args, field_decls, record_repr)
+                  | Types.Type_open -> `Something_else  (* not thought about *)
+                end
+              | Types.Tlink type_expr -> identify_value type_expr env
+              | Types.Ttuple component_types -> `Tuple component_types
+              | Types.Tvariant _ | Types.Tvar _ | Types.Tarrow _
+              | Types.Tobject _ | Types.Tfield _ | Types.Tnil | Types.Tsubst _
+              | Types.Tunivar _ | Types.Tpoly _ | Types.Tpackage _ ->
+                `Something_else
             in
-            list ~print_element ~formatter v
-        | Some (cident, arg_types) ->
-          if summary && List.length arg_types > 1 then begin
-            Format.fprintf formatter "%s (...)" (Ident.name cident);
-          end else
-            let arg_types = Array.of_list arg_types in
+            loop identification
+          end
+        | `List ty ->
+           Format.fprintf formatter "[...]"
+        | `Array ty ->
+          if summary then
+            Format.fprintf formatter "[|...|]"
+          else begin
+            Format.fprintf formatter "[| ";
             let printers =
-              Array.map arg_types ~f:(fun ty v ->
-                let ty =
-                  try List.assoc ty args
-                  with Not_found ->
-                    (* Either [ty] wasn't a type variable, or it's an existential. *)
-                    ty 
-                in
-                value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
-                  ~print_sig:false ~formatter v
-                  ~summary
+              Array.init (Gdb.Obj.size v) ~f:(fun _ v ->
+                value ~depth:(succ depth) ~print_sig
+                  ~type_of_ident:(Some (ty, env))
+                  ~summary ~formatter v
               )
             in
-            default_printer ~printers ~prefix:(Ident.name cident) ~formatter v
-              ~force_never_like_list:true
-        end
+            default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true
+              ~formatter v;
+            Format.fprintf formatter " |]"
+          end
+        | `Tuple lst ->
+          if summary && (List.length lst > 2 || depth > 0) then
+            Format.fprintf formatter "(...)"
+          else
+            let component_types = Array.of_list lst in
+            let printers =
+              Array.map component_types ~f:(fun ty v ->
+                value ~depth:(succ depth) ~print_sig:false
+                  ~type_of_ident:(Some (ty, env)) ~summary ~formatter v
+              )
+            in
+            default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true
+              ~formatter v
+        | `Record (path, args, field_decls, record_repr) ->
+          let field_decls = Array.of_list field_decls in
+          if Array.length field_decls <> Gdb.Obj.size v then
+            (* The record declaration doesn't appear to match the value; just bail out. *)
+            let () = Format.fprintf formatter "<type decl doesn't match value> " in
+            default_printer ~printers:(Lazy.force default_printers) ~formatter v
+          else
+            if Array.length field_decls = 1
+               && Ident.name (field_decls.(0).Types.ld_id) = "contents"
+               && Path.name path = "Pervasives.ref"
+            then begin
+              Format.fprintf formatter "ref ";
+              let contents_type =
+                match args with
+                | [_type_param, contents_type] -> Some (contents_type, env)
+                | _ -> None
+              in
+              value ~depth:(succ depth) ~type_of_ident:contents_type
+                ~print_sig:false ~summary ~formatter (Gdb.Obj.field v 0)
+            end
+            else if summary then
+              Format.fprintf formatter "{...}"
+            else
+              let fields_helpers =
+                Array.map field_decls ~f:(fun ld ->
+                  let printer v =
+                    value ~depth:(succ depth)
+                      ~type_of_ident:(Some (ld.Types.ld_type, env))
+                      ~print_sig:false ~summary ~formatter v
+                  in
+                  Ident.name ld.Types.ld_id, printer
+                )
+              in
+              if depth = 0 && Array.length field_decls > 1 then begin
+                Format.pp_print_newline formatter ();
+                Format.fprintf formatter "@[<v>  "
+              end;
+              record ~fields_helpers ~formatter v;
+              if depth = 0 && Array.length field_decls > 1 then begin
+                Format.fprintf formatter "@]"
+              end;
+        | `Constructed_value (cases, args) ->
+          let non_constant_ctors = extract_non_constant_ctors cases in
+          let ctor_info =
+            try Some (List.assoc tag non_constant_ctors) with Not_found -> None
+          in
+          begin match ctor_info with
+          | None ->
+            default_printer ~printers:(Lazy.force default_printers) ~formatter v
+          | Some (cident, _) when Ident.name cident = "::" && List.length args = 1 ->
+            if summary then
+              Format.fprintf formatter "[...]"
+            else
+              let print_element =
+                match args with
+                | [ (_, elements_type) ] ->
+                  value ~depth:(succ depth) ~print_sig:false ~formatter
+                    ~type_of_ident:(Some (elements_type, env))
+                    ~summary
+                | _ -> assert false
+              in
+              list ~print_element ~formatter v
+          | Some (cident, arg_types) ->
+            if summary && List.length arg_types > 1 then begin
+              Format.fprintf formatter "%s (...)" (Ident.name cident);
+            end else
+              let arg_types = Array.of_list arg_types in
+              let printers =
+                Array.map arg_types ~f:(fun ty v ->
+                  let ty =
+                    try List.assoc ty args
+                    with Not_found ->
+                      (* Either [ty] wasn't a type variable, or it's an existential. *)
+                      ty 
+                  in
+                  value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
+                    ~print_sig:false ~formatter v
+                    ~summary
+                )
+              in
+              default_printer ~printers ~prefix:(Ident.name cident) ~formatter v
+                ~force_never_like_list:true
+          end
+      in
+      loop identification
     end
   | tag when tag = Gdb.Obj.string_tag ->
     Format.fprintf formatter "%S" (Gdb.Obj.string v)
@@ -447,6 +671,8 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
       (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
     | Some (type_expr, _env) ->
       Format.fprintf formatter " : ";
+      (* CR mshinwell: override with e.g. "string" if that's what it was, and
+         [type_expr] isn't helpful *)
       Printtyp.reset_and_mark_loops type_expr;
       Printtyp.type_expr formatter type_expr
   end
