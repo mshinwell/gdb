@@ -384,10 +384,6 @@ let rec find_module_binding ~path ~is_toplevel ~env =
    the definition of the abstract type is contained and examining the structure
    definitions therein.  (We don't look at the signatures since a signature within the
    module might conceal the manifest type.)
-   For the moment, we look for the .cmt file in the directory where we think the
-   corresponding source file lives.  There might be more than one source file with the
-   same name (if using -pack); in this case, we try to load all corresponding .cmt
-   files.
 *)
 let find_manifest_of_abstract_type ~path ~env =
   if !debug then
