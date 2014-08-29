@@ -380,6 +380,11 @@ let rec find_module_binding ~path ~is_toplevel ~env =
   | Path.Papply (path1, path2) ->
     `Not_found  (* CR mshinwell: handle this case *)
 
+(* concrete example of an error
+#4  0x00000000004a850e in Asmgen.compile_implementation (ppf=<Format.formatter> : Format.formatter, param=<optimized out>, 
+    toplevel=<UNALIGNED OBJECT> : (string -> bool) option, source_file_path=<optimized out>, prefixname="testlist_small" : string) at asmcomp/asmgen.ml:66
+*)
+
 (* Attempt to find the manifest of an abstract type by locating the .cmt file in which
    the definition of the abstract type is contained and examining the structure
    definitions therein.  (We don't look at the signatures since a signature within the
