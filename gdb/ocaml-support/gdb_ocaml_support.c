@@ -363,7 +363,7 @@ try_to_find_call_point_of_frame(struct frame_info* selected_frame,
 }
 
 static void
-ocaml_val_print (value callback,
+ocaml_val_print (value* callback,
                  struct type *type, struct symbol *symbol,
                  const gdb_byte *valaddr,
                  int embedded_offset,
@@ -373,7 +373,7 @@ ocaml_val_print (value callback,
                  int depth)
 {
   CAMLparam0();
-  CAMLlocal2(v_type, v_call_point);
+  CAMLlocal4(v_type, v_call_point, v_stream, v_target);
   CAMLlocalN(args, 5);
   struct frame_info* selected_frame;
   /* CR mshinwell: I think we may need to explicitly take the lock here. */
@@ -451,14 +451,16 @@ ocaml_val_print (value callback,
     }
   }
 
+  v_target = Val_target (*(CORE_ADDR*)valaddr);
+  v_stream = Val_ptr(stream);
+
   /* The printing code itself is written in OCaml. */
-  args[0] = Val_target (*(CORE_ADDR*)valaddr);
-  /* CR mshinwell: make it more explicit that [Val_ptr] allocates */
-  args[1] = Val_ptr (stream);
-  args[2] = v_type;
-  args[3] = v_call_point;
-  args[4] = Val_bool(options->summary);
-  (void) caml_callbackN (callback, 5, args);
+  Store_field(args, 0, v_target);
+  Store_field(args, 1, v_stream);
+  Store_field(args, 2, v_type);
+  Store_field(args, 3, v_call_point);
+  Store_field(args, 4, Val_bool(options->summary));
+  (void) caml_callbackN (*callback, 5, args);
 
   CAMLreturn0;
 }
@@ -479,7 +481,7 @@ gdb_ocaml_support_val_print (struct type *type, struct symbol *symbol,
   }
 
   if (callback != NULL) {
-    ocaml_val_print (*callback, type, symbol, valaddr, embedded_offset,
+    ocaml_val_print (callback, type, symbol, valaddr, embedded_offset,
                      address, stream, recurse, val, options, depth);
   }
 }

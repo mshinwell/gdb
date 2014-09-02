@@ -46,6 +46,7 @@ type t = {
     ([ `Recover_label_ty of string | `Ty of Types.type_expr ] list * Env.t) LocTable.t
 }
 
+(* CR mshinwell: use the new cache *)
 let cache : (string, t) Hashtbl.t = Hashtbl.create 1
 
 let create_null () = {

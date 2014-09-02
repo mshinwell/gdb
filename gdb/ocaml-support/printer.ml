@@ -20,7 +20,7 @@
 
 open Std
 
-let debug = ref false
+let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
 
 let extract_non_constant_ctors ~cases =
   let non_constant_ctors, _ =
@@ -207,13 +207,23 @@ let record ~fields_helpers ~formatter r =
   done;
   Format.fprintf formatter "@ }@]"
 
+let rec print_path = function
+  | Path.Pident ident -> Ident.name ident
+  | Path.Pdot (path, s, _) -> (print_path path) ^ "." ^ "<string: " ^ s ^ " >"
+  | Path.Papply (path1, path2) ->
+    (print_path path1) ^ " applied to " ^ (print_path path2)
+
 let rec identify_value type_expr env =
   match type_expr.Types.desc with
   | Types.Tconstr (path, args, _abbrev_memo_ref) ->
     begin match env_find_type ~env ~path with
     | None -> `Type_decl_not_found
     | Some type_decl ->
-      (* CR mshinwell: not sure if this is correct, check *)
+      (* CR mshinwell: not sure if this is correct, check
+         - also see CR below *)
+      if List.length type_decl.Types.type_params <> List.length args then
+        `Abstract path
+      else
       let args' = List.combine type_decl.Types.type_params args in
       match type_decl.Types.type_kind with
       | Types.Type_variant cases -> `Constructed_value (cases, args')
@@ -251,159 +261,6 @@ external compilation_directories_for_source_file : leafname:string
 *)
 
 module T = Typedtree
-
-(* XXX work out how this is going to be set.
-   Even if the tree uses packing, it should be possible to install only the toplevel
-   modules' .cmi and .cmt files, into a distinguished directory. *)
-let cmt_directory = "/mnt/local/sda1/mshinwell/jane-submissions/lib"
-
-let rec print_path = function
-  | Path.Pident ident -> Ident.unique_name ident
-  | Path.Pdot (path, s, _) -> (print_path path) ^ "." ^ "<string: " ^ s ^ " >"
-  | Path.Papply (path1, path2) ->
-    (print_path path1) ^ " applied to " ^ (print_path path2)
-
-let rec find_module_binding ~path ~is_toplevel ~env =
-  if !debug then
-    Printf.printf "find_module_binding: 1. path=%s\n%!" (print_path path);
-  let path = Env.normalize_path None env path in
-  if !debug then
-    Printf.printf "find_module_binding: 2. path=%s\n%!" (print_path path);
-  match path with
-  | Path.Pident ident ->
-    let lowercase_module_name = String.lowercase (Ident.name ident) in
-    let cmt_name = lowercase_module_name ^ ".cmt" in
-    if !debug then
-      Printf.printf "trying to read cmt: %s/%s\n%!" cmt_directory cmt_name;
-    let cmt =
-      try Some (Cmt_format.read (Filename.concat cmt_directory cmt_name))
-      with Sys_error _ -> None
-    in
-    begin match cmt with
-    | Some (_cmi_infos_opt, Some cmt) ->
-      if !debug then Printf.printf "cmt read was successful\n%!";
-      begin match cmt.Cmt_format.cmt_annots with
-      | Cmt_format.Implementation structure ->
-        let mod_binding =
-          { T.
-            mb_id = ident;
-            mb_name = Location.mkloc (Ident.name ident) Location.none;
-            mb_expr =
-              { T.
-                mod_desc = T.Tmod_structure structure;
-                mod_loc = Location.none;
-                mod_type = Types.Mty_ident path;  (* bogus, but unused *)
-                mod_env = env;  (* likewise *)
-                mod_attributes = [];
-              };
-            mb_attributes = [];
-            mb_loc = Location.none;
-          }
-        in
-        `Found_module mod_binding
-      | Cmt_format.Packed (signature, _) ->
-        (* We look for all .cmt files in the same directory at the moment.  Of
-           course, with packing, there may be name clashes.  Perhaps we can
-           avoid those by not supporting packing in the future. *)
-        `Chop
-      | Cmt_format.Interface _
-      | Cmt_format.Partial_implementation _
-      | Cmt_format.Partial_interface _ ->
-        (* CR mshinwell: no idea what to do with these *)
-        `Not_found
-      end
-    | Some _ | None -> `Not_found
-    end
-  | Path.Pdot (path, component, _) ->
-    begin match find_module_binding ~path ~is_toplevel:false ~env with
-    | `Not_found -> `Not_found
-    | `Found_type_decl _ -> assert false
-    | `Chop ->
-      let path = Path.Pident (Ident.create component) in
-      find_module_binding ~path ~is_toplevel:false ~env
-    | `Found_module mod_binding ->
-      if !debug then
-        Printf.printf "find_module_binding: Found_module case\n%!";
-      match mod_binding.T.mb_expr.T.mod_desc with
-      | T.Tmod_structure structure ->
-        let rec traverse_structure ~structure_items =
-          match structure_items with
-          | [] -> `Not_found
-          | structure_item::structure_items ->
-            let rec traverse_modules ~mod_bindings =
-              match mod_bindings with
-              | [] -> `Not_found
-              | mod_binding::mod_bindings ->
-                if (Ident.name mod_binding.T.mb_id) = component then
-                  `Found_module mod_binding
-                else
-                  traverse_modules ~mod_bindings
-            in
-            match structure_item.T.str_desc with
-            | T.Tstr_type type_decls when is_toplevel ->
-              let rec traverse_type_decls ~type_decls =
-                match type_decls with
-                | [] -> `Not_found
-                | type_decl::type_decls ->
-                  if (Ident.name type_decl.T.typ_id) = component then
-                    `Found_type_decl type_decl
-                  else
-                    traverse_type_decls ~type_decls
-              in
-              traverse_type_decls ~type_decls
-            | T.Tstr_module mod_binding when not is_toplevel ->
-              traverse_modules ~mod_bindings:[mod_binding]
-            | T.Tstr_recmodule mod_bindings when not is_toplevel ->
-              traverse_modules ~mod_bindings
-            | _ -> traverse_structure ~structure_items
-        in
-        traverse_structure ~structure_items:structure.T.str_items
-      | T.Tmod_ident (path, _) ->
-        (* This whole function is called when we're trying to find the manifest
-           type for an abstract type.  As such, even if we get here and could
-           look up types via [path] in the environment, we don't---it
-           may well yield another abstract type.  Instead we go straight to
-           the implementation, having used the environment only to normalize
-           the path. *)
-        (* XXX this probably isn't right; we're assuming [path] starts from
-           the toplevel.  Should we prepend our [path] so far (from Pdot)?
-           Then what happens if it was absolute? *)
-        if !debug then
-          Printf.printf "find_module_binding: 3. path=%s\n%!"
-            (print_path path);
-        find_module_binding ~path ~is_toplevel:false ~env
-      | T.Tmod_functor _
-      | T.Tmod_apply _
-      | T.Tmod_constraint _
-      | T.Tmod_unpack _ -> `Not_found  (* CR mshinwell: handle these cases *)
-    end
-  | Path.Papply (path1, path2) ->
-    `Not_found  (* CR mshinwell: handle this case *)
-
-(* concrete example of an error
-#4  0x00000000004a850e in Asmgen.compile_implementation (ppf=<Format.formatter> : Format.formatter, param=<optimized out>, 
-    toplevel=<UNALIGNED OBJECT> : (string -> bool) option, source_file_path=<optimized out>, prefixname="testlist_small" : string) at asmcomp/asmgen.ml:66
-*)
-
-(* Attempt to find the manifest of an abstract type by locating the .cmt file in which
-   the definition of the abstract type is contained and examining the structure
-   definitions therein.  (We don't look at the signatures since a signature within the
-   module might conceal the manifest type.)
-*)
-let find_manifest_of_abstract_type ~path ~env =
-  if !debug then
-    Printf.printf "finding abstract type: %s\n%!" (print_path path);
-  (* [path] must identify a type declaration.  However, watch out---it may be
-     unqualified. *)
-  (* XXX how do we cope with the unqualified cases?  Built-in types are one,
-     but presumably there may be others?  Not sure. *)
-  match path with
-  | Path.Pident _ -> None
-  | Path.Pdot _ | Path.Papply _ ->
-    match find_module_binding ~path ~is_toplevel:true ~env with
-    | `Not_found | `Chop -> None  (* [`Chop] is "[Foo.t] with [Foo] a pack" *)
-    | `Found_module _ -> assert false
-    | `Found_type_decl type_decl -> Some type_decl
 
 let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v =
 (*  Format.fprintf formatter "@[";*)
@@ -443,7 +300,10 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
     | Some (type_expr, env) ->
       (* TODO: move out *)
       let identification = identify_value type_expr env in
-      let rec loop identification =
+      let rec loop identification count =
+        if count > 5 then
+          Format.fprintf formatter "?res?"
+        else
         match identification with
         | `Type_decl_not_found
         | `Something_else ->
@@ -454,25 +314,34 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
             default_printer ~printers:(Lazy.force default_printers) ~formatter v
           end
         | `Abstract path ->
-          begin match find_manifest_of_abstract_type ~path ~env with
+          Printf.printf "Abstract path: %s\n%!" (print_path path);
+          begin match Abstraction_breaker.find_manifest_of_abstract_type ~path ~env with
           | None -> Format.fprintf formatter "<%s>" (Path.name path)
           | Some type_decl ->
             (* XXX this is duplicated from above. *)
             let identification =
               let type_decl = type_decl.T.typ_type in
               match type_expr.Types.desc with
-              | Types.Tconstr (path, args, _abbrev_memo_ref) -> begin
-                  let args = List.combine type_decl.Types.type_params args in
-                  match type_decl.Types.type_kind with
-                  | Types.Type_variant cases -> `Constructed_value (cases, args)
-                  | Types.Type_abstract ->
-                    begin match type_decl.Types.type_manifest with
-                    | None -> `Abstract path
-                    | Some ty -> identify_value ty env
-                    end
-                  | Types.Type_record (field_decls, record_repr) ->
-                    `Record (path, args, field_decls, record_repr)
-                  | Types.Type_open -> `Something_else  (* not thought about *)
+              | Types.Tconstr (path, args, _abbrev_memo_ref) ->
+                (* CR mshinwell: improve matters so that Foo.Table.t works. *)
+                if List.length type_decl.Types.type_params <> List.length args then
+                  `Abstract path
+                else
+                let args = List.combine type_decl.Types.type_params args in
+                begin match type_decl.Types.type_kind with
+                | Types.Type_variant cases -> `Constructed_value (cases, args)
+                | Types.Type_abstract ->
+                  begin match type_decl.Types.type_manifest with
+                  | None ->
+                    if debug then Printf.printf "case 1\n%!";
+                    `Abstract path
+                  | Some ty ->
+                    if debug then Printf.printf "case 2\n%!";
+                    identify_value ty env
+                  end
+                | Types.Type_record (field_decls, record_repr) ->
+                  `Record (path, args, field_decls, record_repr)
+                | Types.Type_open -> `Something_else  (* not thought about *)
                 end
               | Types.Tlink type_expr -> identify_value type_expr env
               | Types.Ttuple component_types -> `Tuple component_types
@@ -481,7 +350,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
               | Types.Tunivar _ | Types.Tpoly _ | Types.Tpackage _ ->
                 `Something_else
             in
-            loop identification
+            loop identification (count + 1)
           end
         | `List ty ->
            Format.fprintf formatter "[...]"
@@ -598,7 +467,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
                 ~force_never_like_list:true
           end
       in
-      loop identification
+      loop identification 0
     end
   | tag when tag = Gdb.Obj.string_tag ->
     Format.fprintf formatter "%S" (Gdb.Obj.string v)
@@ -680,6 +549,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
 (*  Format.fprintf formatter "@]"*)
 
 let value ?depth ?print_sig ~type_of_ident ~summary out v =
+  if debug then Printf.printf "Printer.value entry point\n%!";
   let formatter =
     Format.make_formatter
       (fun str pos len -> Gdb.print out (String.sub str pos len))
