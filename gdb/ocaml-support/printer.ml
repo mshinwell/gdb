@@ -52,7 +52,8 @@ let rec value_looks_like_list value =
     else
       false
 
-let default_printer ?prefix ~force_never_like_list ~printers ~formatter value =
+let default_printer ?(separator = ",") ?prefix ~force_never_like_list
+      ~printers ~formatter value =
   (* See if the value looks like a list.  If it does, then print it as a list; it seems
      far more likely to be one of those than a set of nested pairs. *)
   if value_looks_like_list value && not force_never_like_list then
@@ -65,7 +66,7 @@ let default_printer ?prefix ~force_never_like_list ~printers ~formatter value =
     | Some p -> Format.fprintf formatter "@[%s " p
     end;
     for field = 0 to Gdb.Obj.size value - 1 do
-      if field > 0 then Format.fprintf formatter ",@;<1 0>";
+      if field > 0 then Format.fprintf formatter "%s@;<1 0>" separator;
       try printers.(field) (Gdb.Obj.field value field)
       with Gdb.Read_error _ ->
         Format.fprintf formatter "<field %d read failed>" field
@@ -121,8 +122,9 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
 (*  Format.fprintf formatter "@[";*)
   (* CR mshinwell: [force_never_like_list] is a hack.  Seems like the list guessing
      should only be applied in a couple of cases, so maybe invert the flag? *)
-  let default_printer ?(force_never_like_list = false) ?prefix ~printers ~formatter v =
-    match default_printer ?prefix ~force_never_like_list ~printers ~formatter v with
+  let default_printer ?separator ?(force_never_like_list = false) ?prefix
+      ~printers ~formatter v =
+    match default_printer ?separator ?prefix ~force_never_like_list ~printers ~formatter v with
     | `Done -> ()
     | `Looks_like_list ->
       if summary then
@@ -177,8 +179,8 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
               ~type_of_ident ~summary ~formatter v
           )
         in
-        default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true
-          ~formatter v;
+        default_printer ~separator:";" ~printers ~prefix:"XXX"
+          ~force_never_like_list:true ~formatter v;
         Format.fprintf formatter " |]"
       end
     | `List ty ->

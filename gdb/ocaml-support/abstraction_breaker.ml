@@ -205,8 +205,11 @@ let find_manifest_of_abstract_type =
         None
       | `Found_module _ -> assert false
       | `Found_type_decl (path, type_decl) ->
-        if debug then Printf.printf "find_manifest: type decl found\n%!";
-        Printtyp.type_declaration (Ident.create_persistent "foo") formatter type_decl.T.typ_type;
+        if debug then begin
+          Printf.printf "find_manifest: type decl found\n%!";
+          Printtyp.type_declaration (Ident.create_persistent "foo")
+            formatter type_decl.T.typ_type
+        end;
         Some (path, type_decl.T.typ_type)
 (*
         let env = structure.T.str_final_env in
