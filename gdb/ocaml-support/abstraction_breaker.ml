@@ -36,6 +36,7 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
   if debug then
     Printf.printf "find_module_binding: 1. path=%s\n%!" (print_path path);
   let path = Env.normalize_path None env path in
+  let original_path = path in
   if debug then
     Printf.printf "find_module_binding: 2. path=%s\n%!" (print_path path);
   match path with
@@ -144,7 +145,7 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
                     Printf.printf "checking type decl '%s'... "
                       (Ident.unique_name type_decl.T.typ_id);
                   if (Ident.name type_decl.T.typ_id) = component then
-                    `Found_type_decl type_decl
+                    `Found_type_decl (original_path, type_decl)
                   else
                     traverse_type_decls ~type_decls
               in
@@ -203,9 +204,10 @@ let find_manifest_of_abstract_type =
         if debug then Printf.printf "find_manifest: Not_found or pack\n%!";
         None
       | `Found_module _ -> assert false
-      | `Found_type_decl type_decl ->
+      | `Found_type_decl (path, type_decl) ->
         if debug then Printf.printf "find_manifest: type decl found\n%!";
-        Some type_decl.T.typ_type
+        Printtyp.type_declaration (Ident.create_persistent "foo") formatter type_decl.T.typ_type;
+        Some (path, type_decl.T.typ_type)
 (*
         let env = structure.T.str_final_env in
         Env.iter_types (fun path1 (path2, (decl, _)) ->

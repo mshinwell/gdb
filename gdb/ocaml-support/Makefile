@@ -4,19 +4,18 @@ OCAMLOPT=ocamlopt
 
 OCAML_LIB=`ocamlc -where`
 
-CFLAGS='-I .. -I ../common -I ../../include -ggdb -I../../../mshinwell-ocaml/stdlib/'
+CFLAGS='-fPIC -I .. -I ../common -I ../../include -ggdb -I../../../mshinwell-ocaml/stdlib/'
 OCAMLFLAGS=-I $(OCAML_LIB)/compiler-libs -g
 SRC=gdb_ocaml_support.c ml_gdb.c std.ml gdb.ml \
     cmt_cache.mli cmt_cache.ml \
     cmt_file.mli cmt_file.ml \
     abstraction_breaker.mli abstraction_breaker.ml \
     type_oracle.mli type_oracle.ml \
-    demangle.ml printer.ml gdb_ocaml_support.ml
+    demangle.ml printer.ml gdb_ocaml.ml
 TARGET_LIB=libgdb_ocaml_support.so
 
 .PHONY: all
-all: bytecode 
-	@#native 
+all: native 
 
 .PHONY: clean
 clean: 
@@ -33,11 +32,13 @@ bytecode:
 
 ## Native support need PIC-enabled toolchain, e.g. configured with:
 ## ./configure -prefix %{prefix}% -cc "gcc -fPIC" -aspp "gcc -c -fPIC"]
-#.PHONY: native
-#native:
-#	$(OCAMLOPT) -output-obj -o $(TARGET_LIB) \
-#	  dynlink.cmxa bigarray.cmxa -runtime-variant _shared \
-#	  $(SRC)
+.PHONY: native
+native:
+	$(OCAMLOPT) -output-obj -o $(TARGET_LIB) $(OCAMLFLAGS) -ccopt $(CFLAGS) \
+	$(OCAML_LIB)/compiler-libs/ocamlcommon.cmxa \
+	$(OCAML_LIB)/compiler-libs/ocamloptcomp.cmxa \
+	dynlink.cmxa bigarray.cmxa \
+	$(SRC)
 
 ## If we later want to use Dynlink
 #.PHONY: plugin

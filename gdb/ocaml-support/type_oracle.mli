@@ -18,8 +18,35 @@
 (*                                                                     *)
 (***********************************************************************)
 
-val find_manifest_of_abstract_type
+val boxed_find_type_information
    : formatter:Format.formatter
-  -> path:Path.t
-  -> env:Env.t
-  -> (Path.t * Types.type_declaration) option
+  -> type_expr_and_env:(Types.type_expr * Env.t) option
+  -> tag:int
+  -> [ `Obj
+     | `Obj_not_traversable
+     | `Abstract of Path.t
+     | `Array of Types.type_expr * Env.t
+     | `List of Types.type_expr
+     | `Tuple of Types.type_expr list * Env.t
+     | `Constructed of Path.t * Types.constructor_declaration list
+         * Types.type_expr list * Types.type_expr list
+     | `Record of Path.t * Types.type_expr list * Types.type_expr list
+         * Types.label_declaration list * Types.record_representation
+         * Env.t
+     | `Open
+     | `Ref of Types.type_expr * Env.t
+     | `String
+     | `Float
+     | `Float_array
+     | `Closure
+     | `Lazy
+     | `Object
+     | `Abstract_tag
+     | `Custom
+     ]
+
+val print_int
+   : Gdb.Obj.t
+  -> type_of_ident:(Types.type_expr * Env.t) option
+  -> formatter:Format.formatter
+  -> unit
