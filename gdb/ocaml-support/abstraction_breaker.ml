@@ -53,6 +53,8 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
       Cmt_cache.read cmt_cache
         ~pathname:(Filename.concat cmt_directory cmt_name)
     in
+    if debug then
+      Printf.printf "Cmt_cache.read finished\n%!";
     begin match cmt with
     | Some (_cmi_infos_opt, Some cmt) ->
       if debug then Printf.printf "cmt read was successful\n%!";
@@ -121,10 +123,16 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
               match mod_bindings with
               | [] -> `Not_found
               | mod_binding::mod_bindings ->
-                if (Ident.name mod_binding.T.mb_id) = component then
+                if debug then
+                  Printf.printf "checking component '%s'... "
+                    (Ident.name mod_binding.T.mb_id);
+                if (Ident.name mod_binding.T.mb_id) = component then begin
+                  if debug then Printf.printf "matches\n%!";
                   `Found_module mod_binding
-                else
+                end else begin
+                  if debug then Printf.printf "does not match\n%!";
                   traverse_modules ~mod_bindings
+                end
             in
             match structure_item.T.str_desc with
             | T.Tstr_type type_decls when is_toplevel ->
@@ -132,8 +140,11 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
                 match type_decls with
                 | [] -> `Not_found
                 | type_decl::type_decls ->
+                  if debug then
+                    Printf.printf "checking type decl '%s'... "
+                      (Ident.unique_name type_decl.T.typ_id);
                   if (Ident.name type_decl.T.typ_id) = component then
-                    `Found_type_decl type_decl
+                    `Found_type_decl (structure, type_decl.T.typ_id)
                   else
                     traverse_type_decls ~type_decls
               in
@@ -168,14 +179,12 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
   | Path.Papply (path1, path2) ->
     `Not_found  (* CR mshinwell: handle this case *)
 
-(* Attempt to find the manifest of an abstract type by locating the .cmt file
-   in which the definition of the abstract type is contained and examining the
-   structure definitions therein.  (We don't look at the signatures since a
-   signature within the module might conceal the manifest type.)
-*)
+(* CR mshinwell: we should maybe try lookups via the environment from higher
+   up the tree. *)
+
 let find_manifest_of_abstract_type =
   let cmt_cache = Cmt_cache.create () in
-    fun ~path ~env ->
+  fun ~formatter ~path ~env ->
     if debug then
       Printf.printf "finding abstract type: %s\n%!" (print_path path);
     (* [path] must identify a type declaration.  However, watch out---it may be
@@ -194,6 +203,15 @@ let find_manifest_of_abstract_type =
         if debug then Printf.printf "find_manifest: Not_found or pack\n%!";
         None
       | `Found_module _ -> assert false
-      | `Found_type_decl type_decl ->
+      | `Found_type_decl (structure, ident) ->
         if debug then Printf.printf "find_manifest: type decl found\n%!";
-        Some type_decl
+        let env = structure.T.str_final_env in
+(*
+        Env.iter_types (fun path1 (path2, (decl, _)) ->
+          Format.fprintf formatter "path1=%s path2=%s decl=\n"
+            (print_path path1) (print_path path2);
+          Printtyp.type_declaration ident formatter decl
+        ) env;
+*)
+        try Some (Env.find_type path env)
+        with Not_found -> None

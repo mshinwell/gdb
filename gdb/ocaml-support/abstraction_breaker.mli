@@ -19,6 +19,7 @@
 (***********************************************************************)
 
 val find_manifest_of_abstract_type
-   : path:Path.t
+   : formatter:Format.formatter
+  -> path:Path.t
   -> env:Env.t
-  -> Typedtree.type_declaration option
+  -> Types.type_declaration option
