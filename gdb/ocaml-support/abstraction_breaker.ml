@@ -144,7 +144,7 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
                     Printf.printf "checking type decl '%s'... "
                       (Ident.unique_name type_decl.T.typ_id);
                   if (Ident.name type_decl.T.typ_id) = component then
-                    `Found_type_decl (structure, type_decl.T.typ_id)
+                    `Found_type_decl type_decl
                   else
                     traverse_type_decls ~type_decls
               in
@@ -203,15 +203,24 @@ let find_manifest_of_abstract_type =
         if debug then Printf.printf "find_manifest: Not_found or pack\n%!";
         None
       | `Found_module _ -> assert false
-      | `Found_type_decl (structure, ident) ->
+      | `Found_type_decl type_decl ->
         if debug then Printf.printf "find_manifest: type decl found\n%!";
-        let env = structure.T.str_final_env in
+        Some type_decl.T.typ_type
 (*
+        let env = structure.T.str_final_env in
         Env.iter_types (fun path1 (path2, (decl, _)) ->
           Format.fprintf formatter "path1=%s path2=%s decl=\n"
             (print_path path1) (print_path path2);
           Printtyp.type_declaration ident formatter decl
         ) env;
+        ...this just gives us the abstract type again!
+        try begin
+          if debug then Printf.printf "find_manifest: env lookup OK\n%!";
+          let decl = Env.find_type path env in
+          Some decl
+        end
+        with Not_found -> begin
+          if debug then Printf.printf "find_manifest: env lookup failed\n%!";
+          None
+        end
 *)
-        try Some (Env.find_type path env)
-        with Not_found -> None

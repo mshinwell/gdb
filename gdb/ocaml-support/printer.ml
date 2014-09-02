@@ -39,105 +39,6 @@ let extract_non_constant_ctors ~cases =
   in
   non_constant_ctors
 
-let extract_constant_ctors ~cases =
-  let constant_ctors, _ =
-    List.fold_left cases
-      ~init:([], 0)
-      ~f:(fun (constant_ctors, next_ctor_number) ctor_decl ->
-            let ident = ctor_decl.Types.cd_id in
-            match ctor_decl.Types.cd_args with
-            | [] ->
-              (Int64.of_int next_ctor_number, ident)::constant_ctors, next_ctor_number + 1
-            | _ ->
-              constant_ctors, next_ctor_number)
-  in
-  constant_ctors
-
-let env_find_type ~env ~path =
-  try Some (Env.find_type path env) with Not_found -> None
-
-(* XXX move into [Type_oracle] *)
-let print_int value ~type_of_ident ~formatter =
-  let default () =
-    let value = Gdb.Obj.int value in
-    Format.fprintf formatter "%d" value
-  in
-  match type_of_ident with
-  | None ->
-    default ();
-    Format.fprintf formatter "?"
-  | Some (type_expr, env) ->
-    let rec print_type_expr type_expr =
-      match type_expr.Types.desc with
-      | Types.Tconstr (path, _, _abbrev_memo_ref) ->
-        begin match env_find_type ~env ~path with
-        | Some type_decl ->
-          begin match type_decl.Types.type_kind with
-          | Types.Type_variant cases ->
-            let constant_ctors = extract_constant_ctors ~cases in
-            let value = Int64.shift_right value 1 in  (* undo the Caml encoding *)
-            if Int64.compare value Int64.zero >= 0
-               && Int64.compare value (Int64.of_int (List.length constant_ctors)) < 0
-            then
-              match
-                try Some (List.assoc value constant_ctors) with Not_found -> None
-              with
-              | Some ident -> Format.fprintf formatter "%s" (Ident.name ident)
-              | None ->
-                Printf.printf "couldn't find value %Ld, ctor list length %d\n%!"
-                  value (List.length constant_ctors);
-                default ()
-            else
-              default ()
-          | Types.Type_open -> default ()  (* Not thought about *)
-          | Types.Type_abstract
-          | Types.Type_record _ ->
-            (* Neither of these are expected. *)
-            default ()
-          end
-        | None ->
-          Format.fprintf formatter "<unk type %s>=" (Path.name path);
-          default ()
-        end
-      | Types.Tvariant row_desc ->
-        let ctor_names_and_hashes =
-          let labels = List.map row_desc.Types.row_fields ~f:fst in
-          List.map labels ~f:(fun label -> label, Btype.hash_variant label)
-        in
-        let desired_hash = Gdb.Obj.int value in
-        let matches =
-          List.filter ctor_names_and_hashes
-            ~f:(fun (ctor_name, hash) -> hash = desired_hash)
-        in
-        begin match matches with
-        | [(ctor_name, _hash)] -> Format.fprintf formatter "`%s" ctor_name
-        | _::_ | [] -> Format.fprintf formatter "`0x%x?" desired_hash
-        end
-      | Types.Tvar _ ->
-        default ();
-        Format.fprintf formatter "?"
-      | Types.Tarrow _ ->
-        Format.fprintf formatter ". -> ."
-      | Types.Ttuple _ ->
-        Format.fprintf formatter "Tuple"
-      | Types.Tobject _ ->
-        Format.fprintf formatter "obj"
-      | Types.Tfield _ ->
-        Format.fprintf formatter "field"
-      | Types.Tnil ->
-        Format.fprintf formatter "nil"
-      | Types.Tlink type_expr -> print_type_expr type_expr
-      | Types.Tsubst _ ->
-        Format.fprintf formatter "subst"
-      | Types.Tunivar _ ->
-        Format.fprintf formatter "univar"
-      | Types.Tpoly _ ->
-        Format.fprintf formatter "poly"
-      | Types.Tpackage _ ->
-        Format.fprintf formatter "package"
-    in
-    print_type_expr type_expr
-
 let rec value_looks_like_list value =
   if Gdb.Obj.is_int value && Gdb.Obj.int value = 0 (* nil *) then
     true
@@ -237,7 +138,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
   begin if (summary && depth > 2) || depth > 5 then
     Format.fprintf formatter ".."
   else if Gdb.Obj.is_int v then
-    print_int ~formatter v ~type_of_ident
+    Type_oracle.print_int ~formatter v ~type_of_ident
   else if not (Gdb.Obj.is_block v) then
     Format.fprintf formatter "<unaligned value>"
   else
