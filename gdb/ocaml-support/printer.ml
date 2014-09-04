@@ -183,8 +183,12 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
           ~force_never_like_list:true ~formatter v;
         Format.fprintf formatter " |]"
       end
-    | `List ty ->
-      Format.fprintf formatter "[...]"
+    | `List (ty, env) ->
+      let print_element =
+        value ~depth:(succ depth) ~print_sig:false ~formatter
+          ~type_of_ident:(Some (ty, env)) ~summary
+      in
+      list ~print_element ~formatter v
     | `Ref (ty, env) ->
       Format.fprintf formatter "ref ";
       value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
@@ -202,10 +206,42 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
               ~type_of_ident ~summary ~formatter v
           )
         in
+        if List.length tys > 1 then Format.fprintf formatter "(";
         default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true
-          ~formatter v
-    | `Constructed (path, ctor_decls, params, args) ->
-      Format.fprintf formatter "<constructed>"
+          ~formatter v;
+        if List.length tys > 1 then Format.fprintf formatter ")"
+    | `Constructed (path, ctor_decls, params, args, env) ->
+      let non_constant_ctors = extract_non_constant_ctors ctor_decls in
+      let ctor_info =
+        let tag = Gdb.Obj.tag v in
+        try Some (List.assoc tag non_constant_ctors) with Not_found -> None
+      in
+      begin match ctor_info with
+      | None ->
+        default_printer ~printers:(Lazy.force default_printers) ~formatter v
+      | Some (cident, args) ->
+        if summary then begin
+          Format.fprintf formatter "%s (...)" (Ident.name cident)
+        end else begin
+          let printers =
+            let args = Array.of_list args in
+            Array.map args ~f:(fun ty v ->
+              value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
+                ~print_sig:false ~formatter v
+                ~summary
+            )
+          in
+          let prefix =
+            let name = Ident.name cident in
+            if List.length args > 1 then Printf.sprintf "(%s" name
+            else name
+          in
+          default_printer ~printers ~prefix ~formatter v
+            ~force_never_like_list:true;
+          if List.length args > 1 then Format.fprintf formatter ")"
+        end
+      end
+
 (*
       let non_constant_ctors = extract_non_constant_ctors cases in
       let ctor_info =

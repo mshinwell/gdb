@@ -26,10 +26,10 @@ val boxed_find_type_information
      | `Obj_not_traversable
      | `Abstract of Path.t
      | `Array of Types.type_expr * Env.t
-     | `List of Types.type_expr
+     | `List of Types.type_expr * Env.t
      | `Tuple of Types.type_expr list * Env.t
      | `Constructed of Path.t * Types.constructor_declaration list
-         * Types.type_expr list * Types.type_expr list
+         * Types.type_expr list * Types.type_expr list * Env.t
      | `Record of Path.t * Types.type_expr list * Types.type_expr list
          * Types.label_declaration list * Types.record_representation
          * Env.t

@@ -109,9 +109,9 @@ let classify_value_below_lazy_tag ~formatter ~type_expr ~env =
   in
   match result with
   | `Array ty -> `Array (ty, env)
-  | `List ty -> `List ty
+  | `List ty -> `List (ty, env)
   | `Constructed (path, cases, params, args) ->
-    `Constructed (path, cases, params, args)
+    `Constructed (path, cases, params, args, env)
   | `Record (path, params, args, field_decls, record_repr) ->
     `Record (path, params, args, field_decls, record_repr, env)
   | `Ref ty -> `Ref (ty, env)
