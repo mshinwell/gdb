@@ -574,13 +574,14 @@ print_frame_args (struct symbol *func, struct frame_info *frame,
 	  /* But if the parameter name is null, don't try it.  Null
 	     parameter names occur on the RS/6000, for traceback
 	     tables.  FIXME, should we even print them?  */
-
 	  if (*SYMBOL_LINKAGE_NAME (sym))
 	    {
 	      struct symbol *nsym;
 
-	      nsym = lookup_symbol (SYMBOL_LINKAGE_NAME (sym),
-				    b, VAR_DOMAIN, NULL);
+	      nsym = lookup_symbol_in_language (SYMBOL_LINKAGE_NAME (sym),
+                                                b, VAR_DOMAIN,
+                                                SYMBOL_LANGUAGE (sym),
+                                                NULL);
 	      gdb_assert (nsym != NULL);
 	      if (SYMBOL_CLASS (nsym) == LOC_REGISTER
 		  && !SYMBOL_IS_ARGUMENT (nsym))
