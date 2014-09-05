@@ -10,7 +10,9 @@ SRC=gdb_ocaml_support.c ml_gdb.c std.ml gdb.ml \
     cmt_cache.mli cmt_cache.ml \
     cmt_file.mli cmt_file.ml \
     abstraction_breaker.mli abstraction_breaker.ml \
+    list_oracle.mli list_oracle.ml \
     type_oracle.mli type_oracle.ml \
+    print_closure.mli print_closure.ml \
     demangle.ml printer.ml gdb_ocaml.ml
 TARGET_LIB=libgdb_ocaml_support.so
 

@@ -41,24 +41,11 @@ let extract_non_constant_ctors ~cases =
   in
   non_constant_ctors
 
-let rec value_looks_like_list value =
-  if Gdb.Obj.is_int value && Gdb.Obj.int value = 0 (* nil *) then
-    true
-  else
-    if (not (Gdb.Obj.is_int value))
-       && Gdb.Obj.is_block value
-       && Gdb.Obj.tag value = 0
-       && Gdb.Obj.size value = 2
-    then
-      value_looks_like_list (Gdb.Obj.field value 1)
-    else
-      false
-
 let default_printer ?(separator = ",") ?prefix ~force_never_like_list
       ~printers ~formatter value =
-  (* See if the value looks like a list.  If it does, then print it as a list; it seems
-     far more likely to be one of those than a set of nested pairs. *)
-  if value_looks_like_list value && not force_never_like_list then
+  (* See if the value looks like a list.  If it does, then print it as a list;
+     it seems more likely to be one of those than a set of nested pairs. *)
+  if List_oracle.value_looks_like_list value && not force_never_like_list then
     `Looks_like_list
   else begin
     begin match prefix with
@@ -145,7 +132,8 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
     Format.fprintf formatter ".."
   else
     let type_info =
-      Type_oracle.find_type_information ~formatter ~type_expr_and_env ~scrutinee:v
+      Type_oracle.find_type_information ~formatter ~type_expr_and_env
+        ~scrutinee:v
     in
     let default_printers =
       lazy (
@@ -319,48 +307,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
     | `Float_array ->
       Format.fprintf formatter "<float array>"
     | `Closure ->
-      begin try
-        if summary then
-          Format.fprintf formatter "<fun>"
-        else begin
-          (* First we try to find out what this function is called.  If it's
-             one of the special currying wrappers then we try to look in the
-             closure's environment to find the "real" function pointer. *)
-          let pc = Gdb.Target.read_field v 0 in
-          let name = Gdb.Priv.gdb_function_linkage_name_at_pc pc in
-          let is_currying_wrapper =
-            match name with
-            | None -> false  (* name not found; assume it isn't a wrapper *)
-            | Some name ->
-              let curry = "caml_curry" in
-              let tuplify = "caml_tuplify" in
-              (* CR mshinwell: this could maybe be made more precise *)
-              String.sub name 0 (String.length curry) = curry
-                || String.sub name 0 (String.length tuplify) = tuplify
-          in
-          let pc =
-            if not is_currying_wrapper then
-              pc
-            else
-              (* The "real" function pointer should be the last entry in the
-                 environment of the closure. *)
-              let num_fields = Gdb.Obj.size v in
-              Gdb.Target.read_field v (num_fields - 1)
-          in
-          match Gdb.Priv.gdb_find_pc_line pc ~not_current:false with
-          | None -> Format.fprintf formatter "<fun> (0x%Lx)" pc
-          | Some {Gdb.Priv. symtab; line = Some line} ->
-            Format.fprintf formatter "<fun> (%s:%d)"
-              (Gdb.Priv.gdb_symtab_filename symtab) line
-          | Some {Gdb.Priv. symtab} ->
-            Format.fprintf formatter "<fun> (%s, 0x%Lx)"
-              (Gdb.Priv.gdb_symtab_filename symtab)
-              pc
-        end
-      with Gdb.Read_error _ ->
-        Format.fprintf formatter
-          "closure, possibly corrupted (code pointer read failed)"
-      end
+      Print_closure.print ~summary ~formatter ~scrutinee:v
     | `Lazy ->
       Format.fprintf formatter "<lazy>"
     | `Object ->
