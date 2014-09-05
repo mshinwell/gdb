@@ -89,6 +89,8 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
       `Not_found
     end
   | Path.Pdot (path, component, _) ->
+    if debug then Printf.printf "path %s, component %s\n%!"
+      (print_path path) component;
     let binding =
       find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel:false ~env
     in
@@ -108,69 +110,85 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
       in
       find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel:false ~env
     | `Found_module mod_binding ->
-      if debug then Printf.printf "find_module_binding: Found_module case\n%!";
-      match mod_binding.T.mb_expr.T.mod_desc with
-      | T.Tmod_structure structure ->
-        let rec traverse_structure ~structure_items =
-          match structure_items with
-          | [] -> `Not_found
-          | structure_item::structure_items ->
-            let rec traverse_modules ~mod_bindings =
-              match mod_bindings with
-              | [] -> `Not_found
-              | mod_binding::mod_bindings ->
-                if debug then
-                  Printf.printf "checking component '%s'... "
-                    (Ident.name mod_binding.T.mb_id);
-                if (Ident.name mod_binding.T.mb_id) = component then begin
-                  if debug then Printf.printf "matches\n%!";
-                  `Found_module mod_binding
-                end else begin
-                  if debug then Printf.printf "does not match\n%!";
-                  traverse_modules ~mod_bindings
-                end
-            in
-            match structure_item.T.str_desc with
-            | T.Tstr_type type_decls when is_toplevel ->
-              let rec traverse_type_decls ~type_decls =
-                match type_decls with
+      if debug then
+        Printf.printf
+          "find_module_binding: Found_module case (path %s, toplevel? %s)\n%!"
+          (print_path path) (if is_toplevel then "yes" else "no");
+      let rec examine_mod_desc mod_desc =
+        match mod_desc with
+        | T.Tmod_structure structure ->
+          let rec traverse_structure ~structure_items =
+            match structure_items with
+            | [] -> `Not_found
+            | structure_item::structure_items ->
+              let rec traverse_modules ~mod_bindings =
+                match mod_bindings with
                 | [] -> `Not_found
-                | type_decl::type_decls ->
+                | mod_binding::mod_bindings ->
                   if debug then
-                    Printf.printf "checking type decl '%s'... "
-                      (Ident.unique_name type_decl.T.typ_id);
-                  if (Ident.name type_decl.T.typ_id) = component then
-                    `Found_type_decl (original_path, type_decl)
-                  else
-                    traverse_type_decls ~type_decls
+                    Printf.printf "checking component '%s'... "
+                      (Ident.name mod_binding.T.mb_id);
+                  if (Ident.name mod_binding.T.mb_id) = component then begin
+                    if debug then Printf.printf "matches\n%!";
+                    `Found_module mod_binding
+                  end else begin
+                    if debug then Printf.printf "does not match\n%!";
+                    traverse_modules ~mod_bindings
+                  end
               in
-              traverse_type_decls ~type_decls
-            | T.Tstr_module mod_binding when not is_toplevel ->
-              traverse_modules ~mod_bindings:[mod_binding]
-            | T.Tstr_recmodule mod_bindings when not is_toplevel ->
-              traverse_modules ~mod_bindings
-            | _ -> traverse_structure ~structure_items
-        in
-        traverse_structure ~structure_items:structure.T.str_items
-      | T.Tmod_ident (path, _) ->
-        (* This whole function is called when we're trying to find the manifest
-           type for an abstract type.  As such, even if we get here and could
-           look up types via [path] in the environment, we don't---it
-           may well yield another abstract type.  Instead we go straight to
-           the implementation, having used the environment only to normalize
-           the path. *)
-        (* XXX this probably isn't right; we're assuming [path] starts from
-           the toplevel.  Should we prepend our [path] so far (from Pdot)?
-           Then what happens if it was absolute? *)
-        if debug then
-          Printf.printf "find_module_binding: 3. path=%s\n%!"
-            (print_path path);
-        find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel:false
-          ~env
-      | T.Tmod_functor _
-      | T.Tmod_apply _
-      | T.Tmod_constraint _
-      | T.Tmod_unpack _ -> `Not_found  (* CR mshinwell: handle these cases *)
+              match structure_item.T.str_desc with
+              | T.Tstr_type type_decls when is_toplevel ->
+                let rec traverse_type_decls ~type_decls =
+                  match type_decls with
+                  | [] -> `Not_found
+                  | type_decl::type_decls ->
+                    if debug then
+                      Printf.printf "checking type decl '%s'... "
+                        (Ident.unique_name type_decl.T.typ_id);
+                    if (Ident.name type_decl.T.typ_id) = component then
+                      `Found_type_decl (original_path, type_decl)
+                    else
+                      traverse_type_decls ~type_decls
+                in
+                traverse_type_decls ~type_decls
+              | T.Tstr_module mod_binding when not is_toplevel ->
+                traverse_modules ~mod_bindings:[mod_binding]
+              | T.Tstr_recmodule mod_bindings when not is_toplevel ->
+                traverse_modules ~mod_bindings
+              | _ -> traverse_structure ~structure_items
+          in
+          traverse_structure ~structure_items:structure.T.str_items
+        | T.Tmod_ident (path, _) ->
+          (* This whole function is called when we're trying to find the manifest
+             type for an abstract type.  As such, even if we get here and could
+             look up types via [path] in the environment, we don't---it
+             may well yield another abstract type.  Instead we go straight to
+             the implementation, having used the environment only to normalize
+             the path. *)
+          (* XXX this probably isn't right; we're assuming [path] starts from
+             the toplevel.  Should we prepend our [path] so far (from Pdot)?
+             Then what happens if it was absolute? *)
+          if debug then
+            Printf.printf "find_module_binding: 3. path=%s\n%!"
+              (print_path path);
+          find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel:false
+            ~env
+        (* CR mshinwell: cope with these *)
+        | T.Tmod_functor _ ->
+          if debug then Printf.printf "Tmod_functor\n%!";
+          `Not_found
+        | T.Tmod_apply _ ->
+          if debug then Printf.printf "Tmod_apply\n%!";
+          `Not_found
+        | T.Tmod_constraint
+            (mod_expr, _mod_type, _mod_type_constraint, _mod_coercion) ->
+          if debug then Printf.printf "Tmod_constraint\n%!";
+          examine_mod_desc mod_expr.T.mod_desc
+        | T.Tmod_unpack _ ->
+          if debug then Printf.printf "Tmod_unpack\n%!";
+          `Not_found
+      in
+      examine_mod_desc mod_binding.T.mb_expr.T.mod_desc
     end
   | Path.Papply (path1, path2) ->
     `Not_found  (* CR mshinwell: handle this case *)
