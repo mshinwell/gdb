@@ -20,6 +20,8 @@
 
 open Std
 
+module Variant_kind = Type_oracle.Variant_kind
+
 let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
 
 let extract_non_constant_ctors ~cases =
@@ -118,7 +120,8 @@ let rec print_path = function
 
 module T = Typedtree
 
-let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v =
+let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
+      ~summary ~formatter v =
 (*  Format.fprintf formatter "@[";*)
   (* CR mshinwell: [force_never_like_list] is a hack.  Seems like the list guessing
      should only be applied in a couple of cases, so maybe invert the flag? *)
@@ -131,7 +134,8 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
         Format.fprintf formatter "[...]"
       else begin
         let print_element =
-          value ~depth:(succ depth) ~print_sig:false ~formatter ~type_of_ident:None ~summary
+          value ~depth:(succ depth) ~print_sig:false ~formatter ~type_of_ident:None
+            ~summary
         in
         list ~print_element ~formatter v;
         Format.fprintf formatter "?"
@@ -139,15 +143,9 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
   in
   begin if (summary && depth > 2) || depth > 5 then
     Format.fprintf formatter ".."
-  else if Gdb.Obj.is_int v then
-    Type_oracle.print_int ~formatter v ~type_of_ident
-  else if not (Gdb.Obj.is_block v) then
-    Format.fprintf formatter "<unaligned value>"
   else
     let type_info =
-      Type_oracle.boxed_find_type_information ~formatter
-        ~type_expr_and_env:type_of_ident
-        ~tag:(Gdb.Obj.tag v)
+      Type_oracle.find_type_information ~formatter ~type_expr_and_env ~scrutinee:v
     in
     let default_printers =
       lazy (
@@ -158,13 +156,20 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
       )
     in
     match type_info with
-    | `Obj ->
+    | `Obj_unboxed | `Int -> Format.fprintf formatter "%Ld" v
+    | `Char ->
+      let value = Gdb.Obj.int v in
+      if value >= 0 && value <= 255 then
+        Format.fprintf formatter "'%s'" (Char.escaped (Char.chr value))
+      else
+        Format.fprintf formatter "%Ld" v
+    | `Obj_boxed_traversable ->
       if summary then
         Format.fprintf formatter "..."
       else
         default_printer ~printers:(Lazy.force default_printers) ~formatter v
-    | `Obj_not_traversable ->
-      Format.fprintf formatter "<v=%Ld, tag %d>" v (Gdb.Obj.tag v)
+    | `Obj_boxed_not_traversable ->
+      Format.fprintf formatter "<0x%Lx, tag %d>" v (Gdb.Obj.tag v)
     | `Abstract path ->
       Format.fprintf formatter "<%s>" (Path.name path)
     | `Array (ty, env) ->
@@ -210,7 +215,11 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
         default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true
           ~formatter v;
         if List.length tys > 1 then Format.fprintf formatter ")"
-    | `Constructed (path, ctor_decls, params, instantiated_params, env) ->
+    | `Constant_constructor (name, kind) ->
+      Format.fprintf formatter "%s%s" (Variant_kind.to_string_prefix kind) name
+    | `Non_constant_constructor
+        (path, ctor_decls, params, instantiated_params, env, kind) ->
+      let kind = Variant_kind.to_string_prefix kind in
       if debug then begin
         List.iter params ~f:(fun ty ->
           Format.fprintf formatter "param>>";
@@ -233,7 +242,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
         default_printer ~printers:(Lazy.force default_printers) ~formatter v
       | Some (cident, args) ->
         if summary || List.length args <> Gdb.Obj.size v then begin
-          Format.fprintf formatter "%s (...)" (Ident.name cident)
+          Format.fprintf formatter "%s%s (...)" kind (Ident.name cident)
         end else begin
           let printers =
             let args = Array.of_list args in
@@ -255,7 +264,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
           in
           let prefix =
             let name = Ident.name cident in
-            if List.length args > 1 then Printf.sprintf "(%s" name
+            if List.length args > 1 then Printf.sprintf "%s%s (" kind name
             else name
           in
           default_printer ~printers ~prefix ~formatter v
@@ -263,48 +272,6 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
           if List.length args > 1 then Format.fprintf formatter ")"
         end
       end
-
-(*
-      let non_constant_ctors = extract_non_constant_ctors cases in
-      let ctor_info =
-        try Some (List.assoc tag non_constant_ctors) with Not_found -> None
-      in
-      let args =
-        try Ctype.apply env params (Btype.repr type_expr) args
-        with Ctype.Cannot_apply -> params
-      in
-      begin match ctor_info with
-      | None ->
-        default_printer ~printers:(Lazy.force default_printers) ~formatter v
-      | Some (cident, _) when Ident.name cident = "::" && List.length args = 1 ->
-        if summary then
-          Format.fprintf formatter "[...]"
-        else
-          let print_element =
-            match args with
-            | [ elements_type ] ->
-              value ~depth:(succ depth) ~print_sig:false ~formatter
-                ~type_of_ident:(Some (elements_type, env))
-                ~summary
-            | _ -> assert false
-          in
-          list ~print_element ~formatter v
-      | Some cident ->
-        if summary && List.length args > 1 then begin
-          Format.fprintf formatter "%s (...)" (Ident.name cident);
-        end else
-          let printers =
-            let args = Array.of_list args in
-            Array.map args ~f:(fun ty ->
-              value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
-                ~print_sig:false ~formatter v
-                ~summary
-            )
-          in
-          default_printer ~printers ~prefix:(Ident.name cident) ~formatter v
-            ~force_never_like_list:true
-      end
-*)
     | `Record (path, params, args, fields, record_repr, env) ->
       if summary then
         Format.fprintf formatter "{...}"
@@ -404,9 +371,8 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
       Format.fprintf formatter "<custom block>"
   end;
   if print_sig then begin
-    match type_of_ident with
+    match type_expr_and_env with
     | None -> ()
-      (* Printf.printf "'%s' not found in cmt\n" symbol_linkage_name *)
     | Some (type_expr, _env) ->
       Format.fprintf formatter " : ";
       (* CR mshinwell: override with e.g. "string" if that's what it was, and

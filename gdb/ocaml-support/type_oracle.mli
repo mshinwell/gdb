@@ -18,35 +18,39 @@
 (*                                                                     *)
 (***********************************************************************)
 
-val boxed_find_type_information
+module Variant_kind : sig
+  type t
+  val to_string_prefix : t -> string
+end
+
+val find_type_information
    : formatter:Format.formatter
   -> type_expr_and_env:(Types.type_expr * Env.t) option
-  -> tag:int
-  -> [ `Obj
-     | `Obj_not_traversable
+  -> scrutinee:Gdb.Obj.t
+  -> [ `Obj_boxed_traversable
+     | `Obj_boxed_not_traversable
+     | `Obj_unboxed
      | `Abstract of Path.t
      | `Array of Types.type_expr * Env.t
      | `List of Types.type_expr * Env.t
      | `Tuple of Types.type_expr list * Env.t
-     | `Constructed of Path.t * Types.constructor_declaration list
+     | `Char
+     | `Int
+     | `Float
+     | `Float_array
+     | `Constant_constructor of string * Variant_kind.t
+     | `Non_constant_constructor of Path.t * Types.constructor_declaration list
          * Types.type_expr list * Types.type_expr list * Env.t
+         * Variant_kind.t
      | `Record of Path.t * Types.type_expr list * Types.type_expr list
          * Types.label_declaration list * Types.record_representation
          * Env.t
      | `Open
      | `Ref of Types.type_expr * Env.t
      | `String
-     | `Float
-     | `Float_array
      | `Closure
      | `Lazy
      | `Object
      | `Abstract_tag
      | `Custom
      ]
-
-val print_int
-   : Gdb.Obj.t
-  -> type_of_ident:(Types.type_expr * Env.t) option
-  -> formatter:Format.formatter
-  -> unit
