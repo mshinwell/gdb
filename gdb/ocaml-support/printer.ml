@@ -19,10 +19,9 @@
 (***********************************************************************)
 
 open Std
+open Debug
 
 module Variant_kind = Type_oracle.Variant_kind
-
-let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
 
 let extract_non_constant_ctors ~cases =
   let non_constant_ctors, _ =
@@ -98,12 +97,6 @@ let record ~fields_helpers ~formatter r =
       Format.fprintf formatter "<could not read field %d>" field_nb
   done;
   Format.fprintf formatter "@ }@]"
-
-let rec print_path = function
-  | Path.Pident ident -> Ident.name ident
-  | Path.Pdot (path, s, _) -> (print_path path) ^ "." ^ "<string: " ^ s ^ " >"
-  | Path.Papply (path1, path2) ->
-    (print_path path1) ^ " applied to " ^ (print_path path2)
 
 module T = Typedtree
 

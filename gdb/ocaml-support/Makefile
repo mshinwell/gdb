@@ -6,7 +6,7 @@ OCAML_LIB=`ocamlc -where`
 
 CFLAGS='-fPIC -I .. -I ../common -I ../../include -ggdb -I../../../mshinwell-ocaml/stdlib'
 OCAMLFLAGS=-I $(OCAML_LIB)/compiler-libs -I /home/mark/dev/mshinwell-ocaml/typing/ -g
-SRC=gdb_ocaml_support.c ml_gdb.c std.ml gdb.ml \
+SRC=gdb_ocaml_support.c ml_gdb.c std.ml gdb.ml debug.ml \
     cmt_cache.mli cmt_cache.ml \
     cmt_file.mli cmt_file.ml \
     abstraction_breaker.mli abstraction_breaker.ml \

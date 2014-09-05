@@ -18,12 +18,7 @@
 (*                                                                     *)
 (***********************************************************************)
 
-let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
-let rec print_path = function
-  | Path.Pident ident -> Ident.name ident
-  | Path.Pdot (path, s, _) -> (print_path path) ^ "." ^ "<string: " ^ s ^ " >"
-  | Path.Papply (path1, path2) ->
-    (print_path path1) ^ " applied to " ^ (print_path path2)
+open Debug
 
 module T = Typedtree
 
