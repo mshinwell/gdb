@@ -177,35 +177,42 @@ let print_int value ~type_of_ident ~formatter =
     let rec print_type_expr type_expr =
       match type_expr.Types.desc with
       | Types.Tconstr (path, _, _abbrev_memo_ref) ->
-        begin match env_find_type ~env ~path with
-        | Some type_decl ->
-          begin match type_decl.Types.type_kind with
-          | Types.Type_variant cases ->
-            let constant_ctors = extract_constant_ctors ~cases in
-            let value = Int64.shift_right value 1 in  (* undo the Caml encoding *)
-            if Int64.compare value Int64.zero >= 0
-               && Int64.compare value (Int64.of_int (List.length constant_ctors)) < 0
-            then
-              match
-                try Some (List.assoc value constant_ctors) with Not_found -> None
-              with
-              | Some ident -> Format.fprintf formatter "%s" (Ident.name ident)
-              | None ->
-                Printf.printf "couldn't find value %Ld, ctor list length %d\n%!"
-                  value (List.length constant_ctors);
+        if Path.same path Predef.path_char then
+          let value = Gdb.Obj.int value in
+          if value >= 0 && value <= 255 then
+            Format.fprintf formatter "'%s'" (Char.escaped (Char.chr value))
+          else
+            Format.fprintf formatter "%d" value
+        else
+          begin match env_find_type ~env ~path with
+          | Some type_decl ->
+            begin match type_decl.Types.type_kind with
+            | Types.Type_variant cases ->
+              let constant_ctors = extract_constant_ctors ~cases in
+              let value = Int64.shift_right value 1 in  (* undo the Caml encoding *)
+              if Int64.compare value Int64.zero >= 0
+                 && Int64.compare value (Int64.of_int (List.length constant_ctors)) < 0
+              then
+                match
+                  try Some (List.assoc value constant_ctors) with Not_found -> None
+                with
+                | Some ident -> Format.fprintf formatter "%s" (Ident.name ident)
+                | None ->
+                  Printf.printf "couldn't find value %Ld, ctor list length %d\n%!"
+                    value (List.length constant_ctors);
+                  default ()
+              else
                 default ()
-            else
+            | Types.Type_open -> default ()  (* Not thought about *)
+            | Types.Type_abstract
+            | Types.Type_record _ ->
+              (* Neither of these are expected. *)
               default ()
-          | Types.Type_open -> default ()  (* Not thought about *)
-          | Types.Type_abstract
-          | Types.Type_record _ ->
-            (* Neither of these are expected. *)
+            end
+          | None ->
+            Format.fprintf formatter "<unk type %s>=" (Path.name path);
             default ()
           end
-        | None ->
-          Format.fprintf formatter "<unk type %s>=" (Path.name path);
-          default ()
-        end
       | Types.Tvariant row_desc ->
         let ctor_names_and_hashes =
           let labels = List.map row_desc.Types.row_fields ~f:fst in

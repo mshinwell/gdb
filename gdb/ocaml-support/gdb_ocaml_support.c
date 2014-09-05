@@ -744,13 +744,11 @@ gdb_ocaml_support_run_function_on_target(value v_var_args)
   }
 
   num_args = Wosize_val(v_var_args);
-  if (num_args > 0) {
-    args = xmalloc(sizeof(struct value*) * (1 + num_args));
-    gdbarch = get_frame_arch(get_current_frame());
-    args[0] = value_from_longest(builtin_type(gdbarch)->builtin_int64, num_args);
-    for (arg = 0; arg < num_args; arg++) {
-      args[1 + arg] = (struct value*) (Field(v_var_args, arg) & ~((value) 1));
-    }
+  args = xmalloc(sizeof(struct value*) * (1 + num_args));
+  gdbarch = get_frame_arch(get_current_frame());
+  args[0] = value_from_longest(builtin_type(gdbarch)->builtin_int64, num_args);
+  for (arg = 0; arg < num_args; arg++) {
+    args[1 + arg] = (struct value*) (Field(v_var_args, arg) & ~((value) 1));
   }
   result = call_function_by_hand (veneer_func, 1 + num_args, args);
   /* CR mshinwell: do we have to free [args[0]]? */

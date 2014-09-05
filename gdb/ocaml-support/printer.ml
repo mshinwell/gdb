@@ -210,7 +210,19 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
         default_printer ~printers ~prefix:"XXX" ~force_never_like_list:true
           ~formatter v;
         if List.length tys > 1 then Format.fprintf formatter ")"
-    | `Constructed (path, ctor_decls, params, args, env) ->
+    | `Constructed (path, ctor_decls, params, instantiated_params, env) ->
+      if debug then begin
+        List.iter params ~f:(fun ty ->
+          Format.fprintf formatter "param>>";
+          Printtyp.reset_and_mark_loops ty;
+          Printtyp.type_expr formatter ty;
+          Format.fprintf formatter "<<");
+        List.iter instantiated_params ~f:(fun ty ->
+          Format.fprintf formatter "iparam>>";
+          Printtyp.reset_and_mark_loops ty;
+          Printtyp.type_expr formatter ty;
+          Format.fprintf formatter "<<")
+      end;
       let non_constant_ctors = extract_non_constant_ctors ctor_decls in
       let ctor_info =
         let tag = Gdb.Obj.tag v in
@@ -220,13 +232,23 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident ~summary ~formatter v 
       | None ->
         default_printer ~printers:(Lazy.force default_printers) ~formatter v
       | Some (cident, args) ->
-        if summary then begin
+        if summary || List.length args <> Gdb.Obj.size v then begin
           Format.fprintf formatter "%s (...)" (Ident.name cident)
         end else begin
           let printers =
             let args = Array.of_list args in
-            Array.map args ~f:(fun ty v ->
-              value ~depth:(succ depth) ~type_of_ident:(Some (ty, env))
+            Array.map args ~f:(fun arg_ty v ->
+              if debug then begin
+                Format.fprintf formatter "arg>>";
+                Printtyp.reset_and_mark_loops arg_ty;
+                Printtyp.type_expr formatter arg_ty;
+                Format.fprintf formatter "<<"
+              end;
+              let arg_ty =
+                try Ctype.apply env params arg_ty instantiated_params
+                with Ctype.Cannot_apply -> arg_ty
+              in
+              value ~depth:(succ depth) ~type_of_ident:(Some (arg_ty, env))
                 ~print_sig:false ~formatter v
                 ~summary
             )
