@@ -59,6 +59,8 @@ let is_probably_ocaml_name ~mangled_name =
     && mangled_name.[4] = (Char.uppercase mangled_name.[4])
 
 let demangle mangled_name =
+  Printf.printf "demangle '%s'\n%!" mangled_name;
+let demangled =
   if not (is_probably_ocaml_name ~mangled_name) then
     (* CR mshinwell: hmm.  So this function gets called for printing names of
        parameters as well as random symbols.  Maybe the parameter names should have
@@ -106,5 +108,8 @@ let demangle mangled_name =
         in
         Some demangled_name
       end
+in
+Printf.printf "demangled name '%s'\n%!" (match demangled with None -> "<none>" | Some n -> n);
+demangled
 
 let () = Callback.register "gdb_ocaml_support_demangle" demangle

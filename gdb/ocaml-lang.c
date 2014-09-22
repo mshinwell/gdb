@@ -182,7 +182,7 @@ ocaml_word_break_characters (void)
 {
   /* CR mshinwell: should maybe remove some more chars.  ( and ) in particular might
      appear---for infix operators---but who knows what removing them from here does. */
-  return " \t\n!@#$%^&*()+=|~`}{[]\"';:?/><,-";
+  return " \t\n!@#$%^&*()+=|~`}{[]\"';:?/><,-.";
 }
 
 static VEC (char_ptr) *
@@ -191,6 +191,8 @@ ocaml_make_symbol_completion_list (char *text, char *word, enum type_code code)
   /* The "." ensures that tab completion works correctly on demanged OCaml symbols. */
   return default_make_symbol_completion_list_break_on (text, word, ".", code);
 }
+
+static int parsed_longident = 0;
 
 static struct value *
 evaluate_subexp_ocaml (struct type *expect_type, struct expression *exp,
@@ -201,6 +203,7 @@ evaluate_subexp_ocaml (struct type *expect_type, struct expression *exp,
   struct value *arg2 = NULL;
   struct type *type1, *type2;
 
+printf("eval_subexp_ocaml  parsed_longident=%d\n", parsed_longident);fflush(stdout);
   switch (op)
     {
     case STRUCTOP_STRUCT:  /* Record field access */
@@ -259,13 +262,44 @@ compile_and_run_expression (char *expr_text)
 static int parsing_call;
 
 static int
+is_longident(const char* p)
+{
+  /* CR mshinwell: use proper grammar.  In fact, go into OCaml and use the
+     real one. */
+  if (isalpha(*p)) {
+    p++;
+    while (*p) {
+      if (!isalnum(*p) && *p != '_' && *p != '.') {
+        return 0;
+      }
+      p++;
+    }
+    return 1;
+  }
+  return 0;
+}
+
+static int
 ocaml_parse(void)
 {
   struct stoken stoken = { lexptr, strlen (lexptr) };
+
+/* to be continued... */
+  parsed_longident = 0;
+  if (is_longident(lexptr)) {
+    char* mangled = ocaml_mangle(lexptr);
+    struct stoken token = { mangled, strlen(mangled) };
+    write_exp_string(stoken);
+    lexptr += strlen(lexptr);
+    parsed_longident = 1;
+    return 0;
+  }
+
   if (strchr (lexptr, ' ') || strchr (lexptr, '('))
     {
       /* CR mshinwell: gross hack for the moment to detect calls */
 
+printf("ocaml_parse parsing_call=1\n");fflush(stdout);
       write_exp_string (stoken);
       lexptr += strlen (lexptr);
       parsing_call = 1;
@@ -294,7 +328,11 @@ static struct value *
 ocaml_evaluate_exp (struct type *type, struct expression *expr,
                     int *foo, enum noside noside)
 {
-  if (parsing_call)
+/*  if (parsed_longident)
+    {
+
+    }
+  else*/ if (parsing_call)
     {
       int elt;
       long expr_length;  /* not including NULL terminator */

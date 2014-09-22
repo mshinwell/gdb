@@ -25,7 +25,7 @@ module T = Typedtree
 (* XXX work out how this is going to be set.
    Even if the tree uses packing, it should be possible to install only the toplevel
    modules' .cmi and .cmt files, into a distinguished directory. *)
-let cmt_directory = "/home/mark/dev/cmt/"
+let cmt_directory = "/mnt/local/sda1/mshinwell/jane-submissions/lib"
 
 let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
   if debug then
