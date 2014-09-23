@@ -49,14 +49,14 @@ let check_predef_paths ~path ~args ~env ~scrutinee =
   (* CR mshinwell: validate more things (e.g. value size) *)
   if Path.same path Predef.path_array then
     match scrutinee with
-    | `Unboxed _ -> Some `Obj_unboxed  (* should be boxed *)
+    | `Unboxed _ -> Some `Obj_unboxed_but_should_be_boxed
     | `Boxed _ ->
       match args with
       | [arg] -> Some (`Array (arg, env))
       | _ -> Some `Obj_boxed_traversable  (* wrong number of arguments *)
   else if Path.same path Predef.path_list then
     match scrutinee with
-    | `Unboxed _ -> Some `Obj_unboxed  (* should be boxed *)
+    | `Unboxed _ -> Some `Obj_unboxed_but_should_be_boxed
     | `Boxed _ ->
       match args with
       | [arg] -> Some (`List (arg, env))
@@ -116,12 +116,12 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
   | Types.Ttuple component_types ->
     begin match scrutinee with
     | `Boxed _ -> `Tuple (component_types, env)
-    | `Unboxed _ -> `Obj_unboxed  (* should not be unboxed *)
+    | `Unboxed _ -> `Obj_unboxed_but_should_be_boxed
     end
   | Types.Tarrow _ ->
     begin match scrutinee with
     | `Boxed _ -> `Closure
-    | `Unboxed _ -> `Obj_unboxed  (* should not be unboxed *)
+    | `Unboxed _ -> `Obj_unboxed_but_should_be_boxed
     end
   | Types.Tvar _
   | Types.Tobject _ | Types.Tfield _ | Types.Tnil | Types.Tsubst _

@@ -61,6 +61,7 @@ ocaml_support_init (struct gdb_ocaml_support *stubs)
 
   SET_STUB (stubs, handle, val_print);
   SET_STUB (stubs, handle, demangle);
+  SET_STUB (stubs, handle, partially_mangle);
   SET_STUB (stubs, handle, print_type);
   SET_STUB (stubs, handle, compile_and_run_expression);
 
@@ -103,6 +104,17 @@ ocaml_support_val_print (struct type *type, struct symbol *symbol,
       return 1;
     }
   return 0;
+}
+
+char*
+ocaml_support_partially_mangle(const char* name)
+{
+  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  if (stubs && stubs->val_print)
+    {
+      return (stubs->partially_mangle (name));
+    }
+  return NULL;
 }
 
 char*

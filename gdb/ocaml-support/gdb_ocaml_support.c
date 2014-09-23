@@ -487,6 +487,30 @@ gdb_ocaml_support_val_print (struct type *type, struct symbol *symbol,
 }
 
 char*
+gdb_ocaml_support_partially_mangle (char* name)
+{
+  static value *cb = NULL;
+  CAMLparam0();
+  CAMLlocal2 (caml_res, caml_name);
+
+  char* res = NULL;
+
+  if (cb == NULL) {
+    cb = caml_named_value ("gdb_ocaml_support_partially_mangle");
+  }
+
+  if (cb != NULL) {
+    caml_name = caml_copy_string (name);
+    caml_res = caml_callback (*cb, caml_name);
+
+    gdb_assert (Is_block(caml_res) && Tag_val(caml_res) == String_tag);
+    res = strdup (String_val(caml_res));
+  }
+
+  CAMLreturnT (char*, res);
+}
+
+char*
 gdb_ocaml_support_demangle (char* mangled, int options)
 {
   static value *cb = NULL;

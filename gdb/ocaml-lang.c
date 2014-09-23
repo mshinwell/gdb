@@ -266,7 +266,9 @@ is_longident(const char* p)
 {
   /* CR mshinwell: use proper grammar.  In fact, go into OCaml and use the
      real one. */
-  if (isalpha(*p)) {
+  /* for the moment, exclude things starting with lower-case, until we figure
+     out how not to mess up printing of arguments and locals */
+  if (isupper(*p)) {
     p++;
     while (*p) {
       if (!isalnum(*p) && *p != '_' && *p != '.') {
@@ -284,12 +286,28 @@ ocaml_parse(void)
 {
   struct stoken stoken = { lexptr, strlen (lexptr) };
 
-/* to be continued... */
   parsed_longident = 0;
   if (is_longident(lexptr)) {
-    char* mangled = ocaml_mangle(lexptr);
-    struct stoken token = { mangled, strlen(mangled) };
+    struct stoken stoken;
+    enum language *old_current_language;
+    VEC (char_ptr) *matches;
+    char* mangled;
+
+    mangled = ocaml_support_partially_mangle(lexptr);
+    matches = make_symbol_completion_list(mangled, mangled);
+
+    if (VEC_length (char_ptr, matches) == 1)
+      {
+        stoken.ptr = VEC_index (char_ptr, matches, 0);
+      }
+    else
+      {
+        stoken.ptr = lexptr;
+      }
+
+    stoken.length = strlen(stoken.ptr);
     write_exp_string(stoken);
+    VEC_free (char_ptr, matches);
     lexptr += strlen(lexptr);
     parsed_longident = 1;
     return 0;
@@ -299,7 +317,7 @@ ocaml_parse(void)
     {
       /* CR mshinwell: gross hack for the moment to detect calls */
 
-printf("ocaml_parse parsing_call=1\n");fflush(stdout);
+ /*printf("ocaml_parse parsing_call=1\n");fflush(stdout);*/
       write_exp_string (stoken);
       lexptr += strlen (lexptr);
       parsing_call = 1;
@@ -314,7 +332,7 @@ static void
 ocaml_operator_length (const struct expression *expr, int endpos,
 		       int *oplenp, int *argsp)
 {
-  if (parsing_call)
+  if (parsed_longident || parsing_call)
     {
       *oplenp = 1;
       *argsp = 0;
@@ -328,11 +346,7 @@ static struct value *
 ocaml_evaluate_exp (struct type *type, struct expression *expr,
                     int *foo, enum noside noside)
 {
-/*  if (parsed_longident)
-    {
-
-    }
-  else*/ if (parsing_call)
+  if (parsed_longident || parsing_call)
     {
       int elt;
       long expr_length;  /* not including NULL terminator */
@@ -356,14 +370,45 @@ ocaml_evaluate_exp (struct type *type, struct expression *expr,
         }
       expr_text[expr_length] = '\0';
 
-      compile_and_run_expression (expr_text);
+      if (parsed_longident)
+        {
+          struct symbol *sym;
+          sym = lookup_symbol_global(expr_text, NULL, VAR_DOMAIN);
+/*          printf("'%s'\n", expr_text);fflush(stdout);*/
+          if (!sym)
+            {
+/*              printf("symbol not found\n");fflush(stdout);*/
+              goto standard;
+            }
+          else
+            {
+              struct frame_info *current_frame;
 
-      /* xfree (expr_text); */
+              /* ...what about if we don't have a frame? There is an assertion
+                 in read_var_value */
+              if (is_ocaml_type(SYMBOL_TYPE(sym)))
+                {
+                  return read_var_value(sym, current_frame);
+                }
+              else
+                {
+                 /* printf("symbol does NOT have ocaml type\n");fflush(stdout);*/
+                  goto standard;
+                }
+            }
+        }
+      else
+        {
+          compile_and_run_expression (expr_text);
 
-      return value_from_longest (
-        builtin_ocaml_type (expr->gdbarch)->builtin_value, 1 /* Val_unit */);
+          /* xfree (expr_text); */
+
+          return value_from_longest (
+            builtin_ocaml_type (expr->gdbarch)->builtin_value, 1 /* Val_unit */);
+        }
     }
 
+standard:
   return evaluate_subexp_standard (type, expr, foo, noside);
 }
 

@@ -16,6 +16,7 @@ struct gdb_ocaml_support {
                      int recurse, const struct value *val,
                      const struct value_print_options *options,
                      int depth);
+  char* (*partially_mangle) (const char *name);
   char* (*demangle) (const char *name,
                      int options);
   void (*print_type) (struct type *type, struct ui_file *stream);
@@ -36,6 +37,7 @@ extern int ocaml_support_val_print (struct type *type, struct symbol *symbol,
                                     const struct value_print_options *options,
                                     int depth);
 
+extern char* ocaml_support_partially_mangle (const char* name);
 extern char* ocaml_support_demangle (const char* mangled, int options);
 
 extern void ocaml_support_print_type (struct type *type,

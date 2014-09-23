@@ -144,6 +144,15 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
         Format.fprintf formatter "'%s'" (Char.escaped (Char.chr value))
       else
         Format.fprintf formatter "%Ld" v
+    | `Obj_unboxed_but_should_be_boxed ->
+      (* One common case: a value that is usually boxed but for the moment is
+         initialized with [Val_unit].  For example: module fields before
+         initializers have been run. *)
+      let value = Gdb.Obj.int v in
+      if value = 0 then
+        Format.fprintf formatter "()"
+      else
+        Format.fprintf formatter "%Ld" v
     | `Obj_boxed_traversable ->
       if summary then
         Format.fprintf formatter "..."

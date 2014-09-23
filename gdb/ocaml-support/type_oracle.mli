@@ -37,6 +37,7 @@ val find_type_information
   -> [ `Obj_boxed_traversable
      | `Obj_boxed_not_traversable
      | `Obj_unboxed
+     | `Obj_unboxed_but_should_be_boxed
      | `Abstract of Path.t
      | `Array of Types.type_expr * Env.t
      | `List of Types.type_expr * Env.t
