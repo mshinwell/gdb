@@ -488,11 +488,18 @@ build_ocaml_types (struct gdbarch *gdbarch)
 }
 
 extern initialize_file_ftype _initialize_ocaml_language;
+extern int readnow_symbol_files;
 
 void
 _initialize_ocaml_language (void)
 {
   ocaml_type_data = gdbarch_data_register_post_init (build_ocaml_types);
+
+  /* To work around the lack of support for symbol aliases in ELF,
+     we force reading of full symtabs at the beginning.  This means that
+     setting breakpoints on (e.g.) [B.bar] where b.ml says "let bar = A.foo"
+     with [A] a different compilation unit will work. */
+  readnow_symbol_files = 1;
 
   add_language (&ocaml_language_defn);
 }
