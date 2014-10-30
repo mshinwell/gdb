@@ -401,21 +401,23 @@ if debug then Printf.printf "find_argument_types starting\n%!";
       let _end_file, end_line, end_char =
         Location.get_pos_info location.Location.loc_end
       in
+(*
 if debug then begin
 Printf.printf "find_argument_types: need (%d, %d), examining (%d, %d) -> (%d, %d)... "
   line_number_of_call_site column_number_of_call_site
   start_line start_char
   end_line end_char
 end;
+*)
       if start_line <= line_number_of_call_site
         && end_line >= line_number_of_call_site
         && start_char <= column_number_of_call_site
         && end_char >= column_number_of_call_site
       then begin
-        if debug then Printf.printf "YES\n%!";
+ (*       if debug then Printf.printf "YES\n%!";*)
         type_expr :: candidates
       end else begin
-        if debug then Printf.printf "no\n%!";
+(*        if debug then Printf.printf "no\n%!";*)
         candidates
       end
     ) t.application_points []

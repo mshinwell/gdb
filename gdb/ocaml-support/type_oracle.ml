@@ -55,12 +55,12 @@ let check_predef_paths ~path ~args ~env ~scrutinee =
       | [arg] -> Some (`Array (arg, env))
       | _ -> Some `Obj_boxed_traversable  (* wrong number of arguments *)
   else if Path.same path Predef.path_list then
-    match scrutinee with
-    | `Unboxed _ -> Some `Obj_unboxed_but_should_be_boxed
-    | `Boxed _ ->
-      match args with
-      | [arg] -> Some (`List (arg, env))
-      | _ -> Some `Obj_boxed_traversable  (* wrong number of arguments *)
+    match args with
+    | [arg] -> Some (`List (arg, env))
+    | _ ->
+      match scrutinee with  (* wrong number of arguments *)
+      | `Unboxed _ -> Some `Obj_unboxed
+      | `Boxed _ -> Some `Obj_boxed_traversable
   else if Path.same path Predef.path_int then
     match scrutinee with
     | `Unboxed _ -> Some `Int
@@ -83,9 +83,12 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
       | None ->
         (* Even if the type is abstract, the declaration should still be in
            the environment. *)
+        (* CR mshinwell: Debuginfo.t and Ident.t in the compiler hit this. *)
         begin match scrutinee with
         | `Unboxed _ -> `Obj_unboxed
-        | `Boxed _ -> `Obj_boxed_traversable
+        | `Boxed _ ->
+          if debug then Printf.printf "examine_type_expr error case 1\n%!";
+          `Obj_boxed_traversable
         end
       | Some type_decl ->
         examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
@@ -96,6 +99,7 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
     begin match scrutinee with
     | `Boxed _ ->
       (* CR mshinwell: support boxed polymorphic variant constructors *)
+      if debug then Printf.printf "examine_type_expr error case 2\n%!";
       `Obj_boxed_traversable
     | `Unboxed scrutinee ->
       let ctor_names_and_hashes =
@@ -128,7 +132,9 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
   | Types.Tunivar _ | Types.Tpoly _ | Types.Tpackage _ ->
     (* CR mshinwell: more work to do here *)
     begin match scrutinee with
-    | `Boxed _ -> `Obj_boxed_traversable
+    | `Boxed _ ->
+      if debug then Printf.printf "examine_type_expr error case 3\n%!";
+      `Obj_boxed_traversable
     | `Unboxed _ -> `Obj_unboxed
     end
   | Types.Tlink type_expr ->
@@ -212,31 +218,64 @@ and discover_manifest ~formatter ~paths_visited_so_far ~type_expr ~path
     examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
       ~path ~args ~type_decl ~scrutinee
 
+let string_of_result = function
+  | `Obj_boxed_traversable -> "Obj_boxed_traversable"
+  | `Obj_boxed_not_traversable -> "Obj_boxed_not_traversable"
+  | `Obj_unboxed -> "Obj_unboxed"
+  | `Obj_unboxed_but_should_be_boxed -> "Obj_unboxed_but_should_be_boxed"
+  | `Abstract _ -> "Abstract"
+  | `Array _ -> "Array"
+  | `List _ -> "List"
+  | `Tuple _ -> "Tuple"
+  | `Char -> "Char"
+  | `Int -> "Int"
+  | `Float -> "Float"
+  | `Float_array -> "Float_array"
+  | `Constant_constructor _ -> "Constant_constructor"
+  | `Non_constant_constructor _ -> "Non_constant_constructor"
+  | `Record _ -> "Record"
+  | `Open -> "Open"
+  | `Ref _ -> "Ref"
+  | `String -> "String"
+  | `Closure -> "Closure"
+  | `Lazy -> "Lazy"
+  | `Object -> "Object"
+  | `Abstract_tag -> "Abstract_tag"
+  | `Custom -> "Custom"
+
 let find_type_information ~formatter ~type_expr_and_env ~scrutinee =
-  if Gdb.Obj.is_int scrutinee then
-    match type_expr_and_env with
-    | None -> `Obj_unboxed
-    | Some (type_expr, env) ->
-      examine_type_expr ~formatter ~paths_visited_so_far:[] ~type_expr ~env
-        ~scrutinee:(`Unboxed scrutinee)
-  else
-    let tag = Gdb.Obj.tag scrutinee in
-    match tag with
-    | tag when tag < Obj.lazy_tag ->
-      begin match type_expr_and_env with
-      | None -> `Obj_boxed_traversable
+  if debug then Printf.printf "find_type_information starting\n%!";
+  let result =
+    if Gdb.Obj.is_int scrutinee then
+      match type_expr_and_env with
+      | None -> `Obj_unboxed
       | Some (type_expr, env) ->
         examine_type_expr ~formatter ~paths_visited_so_far:[] ~type_expr ~env
-          ~scrutinee:(`Boxed scrutinee)
-      end
-    | tag when tag = Obj.string_tag -> `String
-    | tag when tag = Obj.double_tag -> `Float
-    | tag when (tag = Obj.closure_tag || tag = Gdb.Obj.infix_tag) -> `Closure
-    | tag when tag = Obj.lazy_tag -> `Lazy
-    | tag when tag = Obj.object_tag -> `Object
-    | tag when tag = Obj.forward_tag -> `Obj_boxed_traversable
-    | tag when tag = Obj.abstract_tag -> `Abstract_tag
-    | tag when tag = Obj.custom_tag -> `Custom
-    | tag when tag = Obj.double_array_tag -> `Float_array
-    | tag when tag < Obj.no_scan_tag -> `Obj_boxed_traversable
-    | tag -> `Obj_boxed_not_traversable
+          ~scrutinee:(`Unboxed scrutinee)
+    else
+      let tag = Gdb.Obj.tag scrutinee in
+      match tag with
+      | tag when tag < Obj.lazy_tag ->
+        begin match type_expr_and_env with
+        | None -> `Obj_boxed_traversable
+        | Some (type_expr, env) ->
+          examine_type_expr ~formatter ~paths_visited_so_far:[] ~type_expr ~env
+            ~scrutinee:(`Boxed scrutinee)
+        end
+      | tag when tag = Obj.string_tag -> `String
+      | tag when tag = Obj.double_tag -> `Float
+      | tag when (tag = Obj.closure_tag || tag = Gdb.Obj.infix_tag) -> `Closure
+      | tag when tag = Obj.lazy_tag -> `Lazy
+      | tag when tag = Obj.object_tag -> `Object
+      | tag when tag = Obj.forward_tag -> `Obj_boxed_traversable
+      | tag when tag = Obj.abstract_tag -> `Abstract_tag
+      | tag when tag = Obj.custom_tag -> `Custom
+      | tag when tag = Obj.double_array_tag -> `Float_array
+      | tag when tag < Obj.no_scan_tag -> `Obj_boxed_traversable
+      | tag -> `Obj_boxed_not_traversable
+  in
+  if debug then begin
+    Printf.printf "find_type_information returning %s\n%!"
+      (string_of_result result);
+  end;
+  result
