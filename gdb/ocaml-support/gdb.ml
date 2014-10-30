@@ -117,7 +117,6 @@ module Target_obj = struct
   let double_tag       = Obj.double_tag      
   let double_array_tag = Obj.double_array_tag
   let custom_tag       = Obj.custom_tag      
-  let final_tag        = Obj.final_tag       
   let int_tag          = Obj.int_tag         
   let unaligned_tag    = Obj.unaligned_tag   
 

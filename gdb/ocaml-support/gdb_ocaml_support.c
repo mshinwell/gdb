@@ -259,9 +259,10 @@ find_location_from_return_address(CORE_ADDR return_address, value* v_call_point_
           line_from_frame_descr = info2 >> 12;
           column = (info2 >> 4) & 0xFF;
 
-          /* Extract the source file and line number from the symtab.  (The line number
-             in the frame descriptor might be truncated, so we prefer the one from
-             the symtab.) */
+          /* Extract the source file and line number from the symtab.  (The
+             line number in the frame descriptor might be truncated, so we
+             prefer the one from the symtab.  Likewise, the frame descriptor
+             may not contain a full path.) */
           symtab_and_line = find_pc_line(return_address, 0);
           line = symtab_and_line.line;
 
@@ -271,18 +272,24 @@ find_location_from_return_address(CORE_ADDR return_address, value* v_call_point_
                     column);
           }
 
-          /* If [column] is [0xff], it was likely truncated, so we don't attempt any
-             lookup since we might have the wrong location.  We also check that the
-             portion of the line number that definitely is not truncated in the frame
-             descriptor matches the corresponding portion of the line number from the
-             symtab.  (See asmcomp/emitaux.ml:emit_frames for the masks.) */
+          /* If [column] is [0xff], it was likely truncated, so we don't
+             attempt any lookup since we might have the wrong location.  We
+             also check that the portion of the line number that definitely is
+             not truncated in the frame descriptor matches the corresponding
+             portion of the line number from the symtab.
+             (See asmcomp/emitaux.ml:emit_frames for the masks.) */
+
           if (line > 0 && column < 0xff
                 && ((line_from_frame_descr & 0xfffff) == (line & 0xfffff))) {
-            /* CR mshinwell: what happens if we have more than one source file with
-               the same name? */
+            char* dirname = symtab_and_line.symtab->dirname;
             char* filename = symtab_and_line.symtab->filename;
             gdb_assert(filename != NULL);  /* cf. symtab.h */
-            v_call_point_source_file = caml_copy_string(filename);
+            if (dirname != NULL) {
+              v_call_point_source_file =
+                caml_alloc_sprintf("%s/%s", dirname, filename);
+            } else {
+              v_call_point_source_file = caml_copy_string(filename);
+            }
             v_call_point = caml_alloc_small(3, 0 /* Call_point.Some */);
             Field(v_call_point, 0) = v_call_point_source_file;
             Field(v_call_point, 1) = Val_long(line);

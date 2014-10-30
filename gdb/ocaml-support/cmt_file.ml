@@ -104,6 +104,8 @@ and process_expression ~exp ((idents_to_types, app_points) as init) =
   | Texp_function (_label, cases, _partial) ->
     process_cases ~cases init
   | Texp_apply (exp, args) ->
+    (* CR mshinwell: what happens when [exp] has already been partially
+       applied? *)
     let app_points =
       let lst =
         List.map args ~f:(fun (label, expr_opt, _optional) ->
@@ -380,31 +382,51 @@ let type_of_ident t ~unique_name =
 
 let find_argument_types t ~source_file_of_call_site ~line_number_of_call_site
       ~column_number_of_call_site =
-  (* CR mshinwell: this is dreadful, but will suffice for now *)
+if debug then Printf.printf "find_argument_types starting\n%!";
+  (* CR mshinwell: this is dreadful, but will suffice for now
+     ...but maybe this could be exact?
+  *)
   let candidates =
     LocTable.fold (fun location type_expr candidates ->
-      let start_file, start_line, start_char =
+      (* We don't compare the filenames:
+         1. We already picked what we thought was the correct cmt file for
+            the source file.
+         2. The filenames might not match up, since the location info from
+            the compiler doesn't necessarily include a full path, whereas that
+            in [source_file_of_call_site] does.
+      *)
+      let _start_file, start_line, start_char =
         Location.get_pos_info location.Location.loc_start
       in
-      let end_file, end_line, end_char =
+      let _end_file, end_line, end_char =
         Location.get_pos_info location.Location.loc_end
       in
-      (* CR mshinwell: still not good enough---could have multiple source files
-          with the same name, as noted elsewhere. *)
-      if start_file = source_file_of_call_site && start_file = end_file
-        && start_line <= line_number_of_call_site
+if debug then begin
+Printf.printf "find_argument_types: need (%d, %d), examining (%d, %d) -> (%d, %d)... "
+  line_number_of_call_site column_number_of_call_site
+  start_line start_char
+  end_line end_char
+end;
+      if start_line <= line_number_of_call_site
         && end_line >= line_number_of_call_site
         && start_char <= column_number_of_call_site
         && end_char >= column_number_of_call_site
-      then
+      then begin
+        if debug then Printf.printf "YES\n%!";
         type_expr :: candidates
-      else
+      end else begin
+        if debug then Printf.printf "no\n%!";
         candidates
+      end
     ) t.application_points []
   in
   match candidates with
-  | [] -> None
-  | [candidate] -> Some candidate
+  | [] ->
+    if debug then Printf.printf "find_argument_types returning None\n%!";
+    None
+  | [candidate] ->
+    if debug then Printf.printf "find_argument_types returning a result\n%!";
+    Some candidate
   | _candidate :: _candidates ->
     if debug then
       Printf.printf "warning: find_argument_types found multiple things\n%!";

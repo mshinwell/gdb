@@ -21,6 +21,8 @@
 (* CR mshinwell: transition to using [Core_kernel] *)
 open Std
 
+let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
+
 let partially_mangle name =
   let components = String.split name ~on:'.' in
   "caml" ^ (String.concat "__" components)
@@ -65,18 +67,34 @@ let is_probably_ocaml_name ~mangled_name =
     && mangled_name.[4] <> '_'
     && mangled_name.[4] = (Char.uppercase mangled_name.[4])
 
+let parameter_prefix = "__ocamlparam"
+
 let demangle mangled_name =
-  if not (is_probably_ocaml_name ~mangled_name) then
+  (*if debug then Printf.printf "Demangle.demangle '%s'\n%!" mangled_name;*)
+  if String.is_prefix mangled_name ~prefix:parameter_prefix then begin
+    let remainder =
+      String.sub mangled_name
+        ~pos:(String.length parameter_prefix)
+        ~len:(String.length mangled_name - String.length parameter_prefix)
+    in
+    try
+      let index_delimiter = String.rindex remainder '-' in
+      Some (String.sub remainder ~pos:0 ~len:index_delimiter)
+    with Not_found -> Some mangled_name
+  end else if not (is_probably_ocaml_name ~mangled_name) then begin
     (* CR mshinwell: hmm.  So this function gets called for printing names of
        parameters as well as random symbols.  Maybe the parameter names should have
        "__ocaml" on the front; then, we don't risk confusion in this case (and can
-       remove this hack). *)
+       remove this hack).
+
+       mshinwell: they do now have the prefix
+    *)
     let without_stamp = String.drop_stamp mangled_name in
     if without_stamp <> mangled_name then
       Some without_stamp (* just assume it's a parameter; see CR above *)
     else
       Some mangled_name
-  else
+  end else
     let maybe_stamped =
       demangle (String.sub mangled_name ~pos:4 ~len:(String.length mangled_name - 4))
     in

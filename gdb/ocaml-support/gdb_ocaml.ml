@@ -23,6 +23,36 @@ open Std
 
 let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
 
+let cmt_file_of_source_file_path =
+  let cache = Hashtbl.create 10 in
+  fun ~source_file_path ->
+    match source_file_path with
+    | None ->
+      if debug then Printf.printf "not looking for cmt (no source path)\n%!";
+      Cmt_file.create_null ()
+    | Some source_file_path ->
+      try
+        let cmt = Hashtbl.find cache source_file_path in
+        if debug then
+          Printf.printf "cmt %s already in the cache\n%!" source_file_path;
+        cmt
+      with Not_found ->
+        let cmt =
+          if String.length source_file_path > 3
+            && Filename.check_suffix source_file_path ".ml"
+          then begin
+            let filename = Filename.chop_extension source_file_path ^ ".cmt" in
+            if debug then Printf.printf "looking for cmt: %s\n%!" filename;
+            Cmt_file.load ~filename
+          end else begin
+            if debug then Printf.printf "not looking for cmt\n%!";
+            Cmt_file.create_null ()
+          end
+        in begin
+          Hashtbl.add cache source_file_path cmt;
+          cmt
+        end
+
 let strip_parameter_index_from_unique_name unique_name =
   match try Some (String.rindex unique_name '-') with Not_found -> None with
   | None -> unique_name
@@ -91,6 +121,8 @@ let find_type_and_env ~symbol_linkage_name ~cmt_file ~call_site =
   match symbol_linkage_name with
   | None -> None
   | Some symbol_linkage_name ->
+    if debug then
+      Printf.printf "(1) symbol_linkage_name='%s'\n%!" symbol_linkage_name;
     let action =
       let unique_name = strip_parameter_index_from_unique_name symbol_linkage_name in
       match Cmt_file.type_of_ident cmt_file ~unique_name with
@@ -111,16 +143,25 @@ let find_type_and_env ~symbol_linkage_name ~cmt_file ~call_site =
           Printf.printf "call site info: file %s, line %d, column %d\n%!"
             source_file line_number column_number;
         let from_call_site =
-          Cmt_file.find_argument_types cmt_file
+          Cmt_file.find_argument_types
+            (cmt_file_of_source_file_path (Some source_file))
             ~source_file_of_call_site:source_file
             ~line_number_of_call_site:line_number
             ~column_number_of_call_site:column_number
         in
         match from_call_site with
-        | None -> fallback
+        | None ->
+          if debug then Printf.printf "find_argument_types failed\n%!";
+          fallback
         | Some (type_exprs, env) ->
+          if debug then
+            Printf.printf "(2) symbol_linkage_name='%s'\n%!" symbol_linkage_name;
           match parameter_index_of_unique_name symbol_linkage_name with
-          | None -> fallback
+          | None ->
+            if debug then
+              Printf.printf "(symbol linkage name doesn't give \
+                the parameter index)\n%!";
+            fallback
           | Some parameter_index ->
             if debug then
               Printf.printf "'%s': parameter index %d: "
@@ -174,24 +215,6 @@ let decode_dwarf_type dwarf_type =
         Printf.eprintf "source file path '%s' symbol linkage name '%s'\n%!"
           source_file_path symbol_linkage_name;
       Some source_file_path, Some symbol_linkage_name
-    end
-
-let cmt_file_of_source_file_path ~source_file_path =
-  (* CR mshinwell: This desperately needs to cache the result. *)
-  match source_file_path with
-  | None ->
-    if debug then Printf.printf "not looking for cmt (no source file path)\n%!";
-    Cmt_file.create_null ()
-  | Some source_file_path ->
-    if String.length source_file_path > 3
-      && Filename.check_suffix source_file_path ".ml"
-    then begin
-      let filename = Filename.chop_extension source_file_path ^ ".cmt" in
-      if debug then Printf.printf "looking for cmt: %s\n%!" filename;
-      Cmt_file.load ~filename
-    end else begin
-      if debug then Printf.printf "not looking for cmt\n%!";
-      Cmt_file.create_null ()
     end
 
 let val_print addr stream ~dwarf_type ~call_site ~summary =
