@@ -79,18 +79,25 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
     begin match check_predef_paths ~path ~args ~env ~scrutinee with
     | Some result -> result
     | None ->
+      if debug then
+         Printf.printf "examine_type_expr: Env.find_type '%s': "
+           (print_path path);
       begin match try Some (Env.find_type path env) with Not_found -> None with
       | None ->
+        if debug then Printf.printf "not found.\n%!";
         (* Even if the type is abstract, the declaration should still be in
            the environment. *)
         (* CR mshinwell: Debuginfo.t and Ident.t in the compiler hit this. *)
         begin match scrutinee with
         | `Unboxed _ -> `Obj_unboxed
         | `Boxed _ ->
-          if debug then Printf.printf "examine_type_expr error case 1\n%!";
+          if debug then
+            Printf.printf "examine_type_expr error case 1, load path is: %s\n%!"
+              (String.concat "," !Config.load_path);
           `Obj_boxed_traversable
         end
       | Some type_decl ->
+        if debug then Printf.printf "found.\n%!";
         examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
           ~path ~args ~type_decl ~scrutinee
       end

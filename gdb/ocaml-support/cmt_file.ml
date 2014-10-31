@@ -298,9 +298,8 @@ let load ~filename =
           (* CR trefis: do we really want to concat with [!Config.load_path] here?
              There might be garbage in it (and we restore it when we're done, so it's
              *really* likely there will be garbage in it).
-
-             mshinwell: temporarily commented out
           *)
+          (* CR mshinwell: load paths need more thinking *)
           let extra_load_path =
             match Filename.dirname filename with
             | "" -> []
@@ -311,7 +310,7 @@ let load ~filename =
               if Filename.is_relative leaf then
                 Filename.concat cmt_infos.Cmt_format.cmt_builddir leaf
               else leaf)
-              cmt_infos.Cmt_format.cmt_loadpath) @ extra_load_path;
+              cmt_infos.Cmt_format.cmt_loadpath) @ extra_load_path @ !Config.load_path;
           if debug then begin
             Printf.printf "cmt_builddir=%s\n%!" cmt_infos.Cmt_format.cmt_builddir;
             Printf.printf "the load path will be: %s\n%!"
