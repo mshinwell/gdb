@@ -25,7 +25,7 @@ module T = Typedtree
 (* XXX work out how this is going to be set.
    Even if the tree uses packing, it should be possible to install only the toplevel
    modules' .cmi and .cmt files, into a distinguished directory. *)
-let cmt_directory = "/mnt/local/sda1/mshinwell/jane-submissions/lib"
+let cmt_directory = try Sys.getenv "CMT" with Not_found -> "/tmp"
 
 let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
   if debug then
@@ -34,6 +34,8 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
   let original_path = path in
   if debug then
     Printf.printf "find_module_binding: 2. path=%s\n%!" (print_path path);
+  (* CR mshinwell: sometimes (e.g. Thread_pool) the path doesn't contain the
+     pack prefix, and so the cmt file can't be found. *)
   match path with
   | Path.Pident ident ->
     let lowercase_module_name = String.lowercase (Ident.name ident) in
@@ -146,7 +148,26 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
                       Printf.printf "checking type decl '%s'... "
                         (Ident.unique_name type_decl.T.typ_id);
                     if (Ident.name type_decl.T.typ_id) = component then
-                      `Found_type_decl (original_path, type_decl)
+                      let type_decl_env =
+                        (* CR mshinwell: this might rely on globals---we should
+                           clean this all up *)
+                        try
+                          Env.env_of_only_summary Envaux.env_from_summary
+                            structure_item.T.str_env
+                        with Envaux.Error _ -> Env.empty
+(*
+                        match type_decl.T.typ_manifest with
+                        | None ->
+                          Printf.printf "typ_manifest is None\n%!";
+                        (*  Env.empty*)
+                          mod_binding.T.mb_expr.T.mod_env
+                        | Some manifest ->
+                          Printf.printf "typ_manifest is Some\n%!";
+                          mod_binding.T.mb_expr.T.mod_env
+                        (*  manifest.T.ctyp_env *)
+*)
+                      in
+                      `Found_type_decl (original_path, type_decl, type_decl_env)
                     else
                       traverse_type_decls ~type_decls
                 in
@@ -196,6 +217,11 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
 (* CR mshinwell: we should maybe try lookups via the environment from higher
    up the tree. *)
 
+let print_env env =
+  Env.fold_types (fun name path _ () ->
+    Printf.printf "print_env: name=%s path=%s\n%!" name (print_path path))
+    None env ()
+
 let find_manifest_of_abstract_type =
   let cmt_cache = Cmt_cache.create () in
   fun ~formatter ~path ~env ->
@@ -217,13 +243,22 @@ let find_manifest_of_abstract_type =
         if debug then Printf.printf "find_manifest: Not_found or pack\n%!";
         None
       | `Found_module _ -> assert false
-      | `Found_type_decl (path, type_decl) ->
+      | `Found_type_decl (path, type_decl, type_decl_env) ->
         if debug then begin
-          Printf.printf "find_manifest: type decl found\n%!";
+          Printf.printf "find_manifest: type decl found.  type_decl_env is:\n%!";
+          print_env type_decl_env;
+          Printf.printf "... and env is:\n%!";
+          print_env env;
           Printtyp.type_declaration (Ident.create_persistent "foo")
-            formatter type_decl.T.typ_type
+            formatter type_decl.T.typ_type;
+          Format.print_flush ()
         end;
-        Some (path, type_decl.T.typ_type)
+        Some (path, type_decl.T.typ_type, type_decl_env)
+(*
+val fold_types:
+  (string -> Path.t -> type_declaration * type_descriptions -> 'a -> 'a) ->
+  Longident.t option -> t -> 'a -> 'a
+*)
 (*
         let env = structure.T.str_final_env in
         Env.iter_types (fun path1 (path2, (decl, _)) ->

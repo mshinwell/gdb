@@ -59,6 +59,9 @@ let create_null () = {
 let rec process_pattern ~pat ~idents_to_types =
   match pat.Typedtree.pat_desc with
   | Typedtree.Tpat_var (ident, _loc) ->
+    if debug then begin
+      Printf.printf "process_pattern: Tpat_var %s\n%!" (Ident.unique_name ident)
+    end;
     String.Map.add (Ident.unique_name ident)
       (pat.Typedtree.pat_type, pat.Typedtree.pat_env)
       idents_to_types
@@ -312,9 +315,10 @@ let load ~filename =
               else leaf)
               cmt_infos.Cmt_format.cmt_loadpath) @ extra_load_path @ !Config.load_path;
           if debug then begin
-            Printf.printf "cmt_builddir=%s\n%!" cmt_infos.Cmt_format.cmt_builddir;
-            Printf.printf "the load path will be: %s\n%!"
+            Printf.printf "cmt_builddir=%s\n%!" cmt_infos.Cmt_format.cmt_builddir
+(*            Printf.printf "the load path will be: %s\n%!"
               (String.concat "," !Config.load_path)
+*)
           end
         in
         let idents, app_points = create_idents_to_types_map ~cmt_infos in
@@ -354,7 +358,9 @@ let load ~filename =
         with
         | Envaux.Error (Envaux.Module_not_found path) -> begin
           if debug then begin
-            Printf.printf "cmt load failed: module '%s' missing\n%!" (Path.name path)
+            Printf.printf "cmt load failed: module '%s' missing, load path: %s\n%!"
+              (Path.name path)
+              (String.concat "," !Config.load_path)
           end;
           String.Map.empty, LocTable.empty
         end

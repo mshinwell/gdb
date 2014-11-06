@@ -163,12 +163,15 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
     | `Abstract path ->
       Format.fprintf formatter "<%s>" (Path.name path)
     | `Array (ty, env) ->
-      if summary then
-        Format.fprintf formatter "[|...|]"
+      let size = Gdb.Obj.size v in
+      if size = 0 then
+        Format.fprintf formatter "@[[| |]@]"
+      else if summary then
+        Format.fprintf formatter "@[[|...|]@]"
       else begin
         Format.fprintf formatter "[| ";
         let printers =
-          Array.init (Gdb.Obj.size v) ~f:(fun _ v ->
+          Array.init size ~f:(fun _ v ->
             let type_of_ident = Some (ty, env) in
             value ~depth:(succ depth) ~print_sig
               ~type_of_ident ~summary ~formatter v
@@ -265,6 +268,9 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
     | `Record (path, params, args, fields, record_repr, env) ->
       if summary then
         Format.fprintf formatter "{...}"
+      else if List.length fields <> Gdb.Obj.size v then
+        Format.fprintf formatter "{expected %d fields, target has %d}"
+          (List.length fields) (Gdb.Obj.size v)
       else begin
         let fields = Array.of_list fields in
         let type_for_field ~index =
@@ -299,7 +305,13 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
     | `Open ->
       Format.fprintf formatter "<value of open type>"
     | `String ->
-      Format.fprintf formatter "%S" (Gdb.Obj.string v)
+      let s = Gdb.Obj.string v in
+      let max_len = 30 in
+      if String.length s > max_len then
+        Format.fprintf formatter "%S (* %d more chars follow *)"
+          (String.sub s 0 max_len) (String.length s - max_len)
+      else
+        Format.fprintf formatter "%S" (Gdb.Obj.string v)
     | `Float ->
       begin try 
         Format.fprintf formatter "%f" (Gdb.Target.read_double v)
@@ -307,7 +319,19 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
         Format.fprintf formatter "<double read failed>"
       end
     | `Float_array ->
-      Format.fprintf formatter "<float array>"
+      let size = Gdb.Obj.size v in
+      if size = 0 then
+        Format.fprintf formatter "@[[| |] (* float array *)@]"
+      else if summary then
+        Format.fprintf formatter "@[[|...|]@]"
+      else begin
+        Format.fprintf formatter "@[<1>[| ";
+        for i = 0 to size - 1 do
+          Format.fprintf formatter "%f" (Gdb.Obj.double_field v i);
+          if i < size - 1 then Format.fprintf formatter ";@;<1 0>"
+        done;
+        Format.fprintf formatter " |] (* float array *)@]"
+      end
     | `Closure ->
       Print_closure.print ~summary ~formatter ~scrutinee:v
     | `Lazy ->
@@ -317,7 +341,22 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
     | `Abstract_tag ->
       Format.fprintf formatter "<block with Abstract_tag>"
     | `Custom ->
-      Format.fprintf formatter "<custom block>"
+      if Gdb.Obj.size v < 2 then
+        Format.fprintf formatter "<malformed custom block>"
+      else
+        let custom_ops = Gdb.Obj.field v 0 in
+        let identifier = Gdb.Obj.c_string_field custom_ops 0 in
+        let data_ptr = Gdb.Obj.field v 1 in
+        match identifier with
+        | "_bigarray" ->
+          Format.fprintf formatter "<Bigarray: data at 0x%Lx>" data_ptr
+        | "_mutex" ->
+          Format.fprintf formatter "<Mutex.t 0x%Lx> (* systhreads *)" data_ptr
+        | "_condition" ->
+          Format.fprintf formatter "<Condition.t 0x%Lx> (* systhreads *)" data_ptr
+        | _ ->
+          Format.fprintf formatter "<custom block '%s' pointing at 0x%Lx>"
+            identifier data_ptr
   end;
   if print_sig then begin
     match type_expr_and_env with

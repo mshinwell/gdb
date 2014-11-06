@@ -87,7 +87,6 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
         if debug then Printf.printf "not found.\n%!";
         (* Even if the type is abstract, the declaration should still be in
            the environment. *)
-        (* CR mshinwell: Debuginfo.t and Ident.t in the compiler hit this. *)
         begin match scrutinee with
         | `Unboxed _ -> `Obj_unboxed
         | `Boxed _ ->
@@ -140,7 +139,19 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
     (* CR mshinwell: more work to do here *)
     begin match scrutinee with
     | `Boxed _ ->
-      if debug then Printf.printf "examine_type_expr error case 3\n%!";
+      let what =
+        match (Btype.repr type_expr).Types.desc with
+        | Types.Tvar _ -> "Tvar"
+        | Types.Tobject _ -> "Tobject"
+        | Types.Tfield _ -> "Tfield"
+        | Types.Tnil -> "Tnil"
+        | Types.Tsubst _ -> "Tsubst"
+        | Types.Tunivar _ -> "Tunivar"
+        | Types.Tpoly _ -> "Tpoly"
+        | Types.Tpackage _ -> "Tpackage"
+        | _ -> assert false
+      in
+      if debug then Printf.printf "examine_type_expr error case 3 %s\n%!" what;
       `Obj_boxed_traversable
     | `Unboxed _ -> `Obj_unboxed
     end
@@ -214,6 +225,7 @@ and examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
       end
   end
 
+(* CR-soon mshinwell: try removing [type_expr], probably redundant *)
 and discover_manifest ~formatter ~paths_visited_so_far ~type_expr ~path
       ~args ~env ~scrutinee =
   let manifest =
@@ -221,7 +233,7 @@ and discover_manifest ~formatter ~paths_visited_so_far ~type_expr ~path
   in
   match manifest with
   | None -> `Abstract path  (* couldn't find manifest; fail gracefully *)
-  | Some (path, type_decl) ->
+  | Some (path, type_decl, env) ->
     examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
       ~path ~args ~type_decl ~scrutinee
 
@@ -251,7 +263,10 @@ let string_of_result = function
   | `Custom -> "Custom"
 
 let find_type_information ~formatter ~type_expr_and_env ~scrutinee =
-  if debug then Printf.printf "find_type_information starting\n%!";
+  if debug then begin
+    Printf.printf "find_type_information starting, type info present? %s\n%!"
+      (match type_expr_and_env with None -> "no" | Some _ -> "yes")
+  end;
   let result =
     if Gdb.Obj.is_int scrutinee then
       match type_expr_and_env with

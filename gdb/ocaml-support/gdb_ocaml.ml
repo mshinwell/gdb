@@ -125,8 +125,11 @@ let find_type_and_env ~symbol_linkage_name ~cmt_file ~call_site =
       Printf.printf "(1) symbol_linkage_name='%s'\n%!" symbol_linkage_name;
     let action =
       let unique_name = strip_parameter_index_from_unique_name symbol_linkage_name in
+      if debug then Printf.printf "(1) unique_name='%s'\n%!" unique_name;
       match Cmt_file.type_of_ident cmt_file ~unique_name with
-      | None -> `Try_call_site_but_fallback_to None
+      | None ->
+        if debug then Printf.printf "`Try_call_site_but_fallback_to None\n%!";
+        `Try_call_site_but_fallback_to None
       | Some (type_expr, env) ->
         if type_is_polymorphic type_expr then
           `Try_call_site_but_fallback_to (Some (type_expr, env))

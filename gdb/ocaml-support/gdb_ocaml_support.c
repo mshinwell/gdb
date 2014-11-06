@@ -57,47 +57,19 @@ gdb_ocaml_support_init (void)
   return 1;
 }
 
-#if 0
-static int
-ocaml_dwarf_type_name_indicates_parameter(const char* name)
-{
-  /* Rudimentary check as to whether [name], a DWARF OCaml type name, indicates
-     that the corresponding identifier is a function parameter. */
-
-  const char* space;
-  const char* underscore;
-  const char* dash;
-
-  /* CR mshinwell: needs improvement */
-
-  space = strrchr(name, ' ');
-  underscore = strrchr(name, '_');
-  dash = strrchr(name, '-');
-
-  if (space < underscore && underscore && dash && underscore < dash) {
-    return 1;
-  }
-
-  return 0;
-}
-#endif
-
 /* Attempt to find an accurate location (source file, line number, column number)
    that corresponds to a call point.  The call point is specified by the return
    address as seen by the callee.
 
    The source file and line number are available from the DWARF info via the symtab.
    The column number is available from the OCaml frame table.
-
-   [v_call_point_out] is filled with [None] if the lookup failed or
-   [Some call_point] upon success, where [call_point] is of type [Call_point.t].
 */
 /* CR-someday mshinwell: We could consider having some kind of unique call point
    identifier.  However these would have to be allocated during normal compilation,
    so it isn't clear how we would ensure they are globally unique in any manner more
    robust than using locations. */
-static void
-find_location_from_return_address(CORE_ADDR return_address, value* v_call_point_out)
+static value
+find_location_from_return_address(CORE_ADDR return_address)
 {
   struct symtab_and_line symtab_and_line;
   int line;
@@ -107,8 +79,6 @@ find_location_from_return_address(CORE_ADDR return_address, value* v_call_point_
   int column = 0;
   CAMLparam0();
   CAMLlocal2(v_call_point, v_call_point_source_file);
-
-  *v_call_point_out = Val_long(0); /* Call_point.None */
 
   /* Find the address of the [caml_frame_descriptors] hashtable in the target's
      memory.  We also need [caml_frame_descriptors_mask]. */
@@ -297,23 +267,21 @@ find_location_from_return_address(CORE_ADDR return_address, value* v_call_point_
             if (debug()) {
               fprintf(stderr, "location found successfully\n");
             }
-            *v_call_point_out = v_call_point;
+            CAMLreturn(v_call_point);
           }
         }
       }
     }
   }
-
-  CAMLreturn0;
+  CAMLreturn(Val_long(0) /* Call_point.None */);
 }
 
 /* A heuristic to try to find the closest (in terms of stack frames) call point of a
    given function that is not itself in the same function.  The idea is to use any such
    call point to determine the instantiations of type variables when the given function
    is polymorphic.  The heuristic is very rough. */
-static void
-try_to_find_call_point_of_frame(struct frame_info* selected_frame,
-                                value* v_call_point_out)
+static value
+try_to_find_call_point_of_frame(struct frame_info* selected_frame)
 {
   CORE_ADDR return_address;
   CORE_ADDR pc_in_original_selected_frame;
@@ -365,8 +333,10 @@ try_to_find_call_point_of_frame(struct frame_info* selected_frame,
      Unlike the rest of this function, this part is not a heuristic.
   */
   if (return_address) {
-    find_location_from_return_address(return_address, v_call_point_out);
+    return find_location_from_return_address(return_address);
   }
+
+  return Val_long(0);
 }
 
 static void
@@ -454,7 +424,7 @@ ocaml_val_print (value* callback,
     selected_frame = get_selected_frame_if_set();
 
     if (selected_frame != NULL) {
-      try_to_find_call_point_of_frame(selected_frame, &v_call_point);
+      v_call_point = try_to_find_call_point_of_frame(selected_frame);
     }
   }
 
@@ -659,14 +629,15 @@ gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
   CAMLparam0();
   CAMLlocal2(v_expr_text, v_vars_in_scope_human_names);
   CAMLlocal2(v_vars_in_scope_linkage_names, v_vars_in_scope_values);
-  CAMLlocal1(v_source_file_path);
+  CAMLlocal2(v_source_file_path, v_call_point);
   CAMLlocalN(args, 7);
   static value *callback = NULL;
   struct frame_info* current_frame;
   struct symbol* current_function = NULL;
   CORE_ADDR pc;
-  value v_call_point = Val_long(0);  /* Call_point.None */
   int num_args = 0;
+
+  v_call_point = Val_long(0);
 
   current_frame = get_current_frame();
   if (get_frame_pc_if_available(current_frame, &pc)) {
@@ -704,7 +675,7 @@ gdb_ocaml_support_compile_and_run_expression (const char *expr_text,
     else {
       int arg;
 
-      try_to_find_call_point_of_frame(current_frame, &v_call_point);
+      v_call_point = try_to_find_call_point_of_frame(current_frame);
 
       v_vars_in_scope_human_names = caml_alloc(num_args, 0);
       v_vars_in_scope_linkage_names = caml_alloc(num_args, 0);

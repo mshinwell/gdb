@@ -148,6 +148,24 @@ module Target_obj = struct
     Target.read_memory_exn x buf size;
     let size = size - 1 - int_of_char buf.[size - 1] in
     String.sub buf 0 size
+
+  (* Read a NULL-terminated string that is pointed to by field [i] of the value
+     (or structure with equivalent layout) at address [t]. *)
+  let c_string_field t i =
+    let ptr = ref (field t i) in
+    let result = ref "" in
+    let finished = ref false in
+    while not !finished do
+      let buf = Bytes.create 1 in
+      read_memory_exn !ptr buf 1;
+      if String.get buf 0 = '\000' then
+        finished := true
+      else begin
+        result := !result ^ buf;
+        ptr := Int64.add !ptr (Int64.of_int 1)
+      end
+    done;
+    !result
 end
 
 module Obj = Target_obj

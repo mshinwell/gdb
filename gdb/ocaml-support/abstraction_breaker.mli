@@ -22,4 +22,4 @@ val find_manifest_of_abstract_type
    : formatter:Format.formatter
   -> path:Path.t
   -> env:Env.t
-  -> (Path.t * Types.type_declaration) option
+  -> (Path.t * Types.type_declaration * Env.t) option
