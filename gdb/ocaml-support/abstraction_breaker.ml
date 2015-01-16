@@ -142,7 +142,7 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
               | T.Tstr_type type_decls when is_toplevel ->
                 let rec traverse_type_decls ~type_decls =
                   match type_decls with
-                  | [] -> `Not_found
+                  | [] -> traverse_structure ~structure_items
                   | type_decl::type_decls ->
                     if debug then
                       Printf.printf "checking type decl '%s'... "
