@@ -25,7 +25,7 @@ let debug = try Sys.getenv "GOS_DEBUG" <> "" with Not_found -> false
 
 let cmt_file_of_source_file_path =
   let cache = Hashtbl.create 10 in
-  fun ~source_file_path ->
+  fun ~source_file_path -> (* CR mshinwell: rename *)
     match source_file_path with
     | None ->
       if debug then Printf.printf "not looking for cmt (no source path)\n%!";
@@ -37,21 +37,11 @@ let cmt_file_of_source_file_path =
           Printf.printf "cmt %s already in the cache\n%!" source_file_path;
         cmt
       with Not_found ->
-        let cmt =
-          if String.length source_file_path > 3
-            && Filename.check_suffix source_file_path ".ml"
-          then begin
-            let filename = Filename.chop_extension source_file_path ^ ".cmt" in
-            if debug then Printf.printf "looking for cmt: %s\n%!" filename;
-            Cmt_file.load ~filename
-          end else begin
-            if debug then Printf.printf "not looking for cmt\n%!";
-            Cmt_file.create_null ()
-          end
-        in begin
-          Hashtbl.add cache source_file_path cmt;
-          cmt
-        end
+        let filename = source_file_path ^ ".cmt" in
+        if debug then Printf.printf "looking for cmt: %s\n%!" filename;
+        let cmt = Cmt_file.load ~filename in
+        Hashtbl.add cache source_file_path cmt;
+        cmt
 
 let strip_parameter_index_from_unique_name unique_name =
   match try Some (String.rindex unique_name '-') with Not_found -> None with
