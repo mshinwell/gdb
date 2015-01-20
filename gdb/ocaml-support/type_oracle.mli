@@ -2,7 +2,7 @@
 (*                                                                     *)
 (*                 Debugger support library for OCaml                  *)
 (*                                                                     *)
-(*  Copyright 2014, Jane Street Holding                                *)
+(*  Copyright 2014--2015, Jane Street Holding                          *)
 (*                                                                     *)
 (*  Licensed under the Apache License, Version 2.0 (the "License");    *)
 (*  you may not use this file except in compliance with the License.   *)
@@ -23,6 +23,10 @@ module Variant_kind : sig
   val to_string_prefix : t -> string
 end
 
+type t
+
+val create : search_path:(unit -> string list) -> t
+
 (* Given a value (either boxed or unboxed) read from the target, known as the
    scrutinee, recover as much type information as possible about the value.
    The starting point is taken to be a pair of a type expression and an
@@ -31,7 +35,8 @@ end
    along with its environment would be read from the .cmt file in which that
    identifier was declared.) *)
 val find_type_information
-   : formatter:Format.formatter
+   : t
+  -> formatter:Format.formatter
   -> type_expr_and_env:(Types.type_expr * Env.t) option
   -> scrutinee:Gdb.Obj.t
   -> [ `Obj_boxed_traversable

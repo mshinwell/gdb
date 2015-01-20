@@ -796,3 +796,34 @@ gdb_ocaml_compilation_directories_for_source_file(value v_file)
 
   CAMLreturn(v_directories_list);
 }
+
+/* These are initialized by way of [_initialize_ocaml_language]. */
+static int value_printer_max_depth;
+static char* search_path = NULL;
+
+void
+gdb_ocaml_support_set_value_printer_max_depth(int new_max_depth)
+{
+  value_printer_max_depth = new_max_depth;
+}
+
+void
+gdb_ocaml_support_set_search_path(char *new_search_path)
+{
+  if (search_path) {
+    free(search_path);
+  }
+  search_path = strdup(new_search_path);
+}
+
+value
+gdb_ocaml_value_printer_max_depth(value v_unit)
+{
+  return Val_long(value_printer_max_depth);
+}
+
+value
+gdb_ocaml_search_path(value v_unit)
+{
+  return caml_copy_string(search_path);
+}

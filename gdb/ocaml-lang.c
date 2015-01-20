@@ -1,5 +1,5 @@
 /* OCaml language support for GDB, the GNU debugger.
-   FIX COPYRIGHT NOTICE.
+   Copyright (C) 2013--2015, Jane Street Holding
 
    Contributed by Mark Shinwell <mshinwell@janestreet.com>
 
@@ -32,10 +32,15 @@
 #include "ocaml-support.h"
 #include "target.h"
 #include "valprint.h"
+#include "breakpoint.h"
+#include "observer.h"
+#include "arch-utils.h"
+#include "gdbcmd.h"
 
 #include <ctype.h>
 
 extern const struct exp_descriptor exp_descriptor_c;
+extern void inferior_created (struct target_ops *objfile, int from_tty);
 
 const char* OCAML_MAIN = "caml_program";
 
@@ -51,17 +56,6 @@ ocaml_main_name (void)
 
   /* No known entry procedure found, the main program is probably not OCaml.  */
   return NULL;
-}
-
-static int
-is_all_digits_after(char* chr)
-{
-  while (*++chr) {
-    if (!isdigit(*chr)) {
-      return 0;
-    }
-  }
-  return 1;
 }
 
 char*
@@ -490,9 +484,79 @@ build_ocaml_types (struct gdbarch *gdbarch)
 extern initialize_file_ftype _initialize_ocaml_language;
 extern int readnow_symbol_files;
 
+static char *runtime_functions_to_continue_over_by_default[] = {
+  "caml_modify",
+  NULL
+};
+
+void
+inferior_created (struct target_ops *objfile, int from_tty)
+{
+/* What we should do instead: add a hook tied into single-stepping, and if we're
+   about to step into caml_modify, go over it.  Or something like that.
+
+  struct breakpoint *breakpoint;
+  int breakpoint_num;
+
+  if (ocaml_main_name () != NULL)
+    {
+      char **function_name = runtime_functions_to_continue_over_by_default;
+
+      while (*function_name)
+        {
+          breakpoint_num = get_internal_breakpoint_number ();
+
+          if (create_breakpoint (get_current_arch (), *function_name++, NULL, -1, NULL,
+                                 0, 0, bp_hardware_breakpoint, 0, AUTO_BOOLEAN_FALSE,
+                                 &bkpt_breakpoint_ops, 0, 1, 1, 0))
+            {
+              struct command_line *continue_command;
+
+              breakpoint = get_breakpoint (breakpoint_num);
+              gdb_assert (breakpoint != NULL);
+
+              breakpoint->silent = 1;
+
+              continue_command = xmalloc (sizeof (struct command_line));
+              continue_command->next = NULL;
+              continue_command->line = "continue";
+              continue_command->control_type = simple_control;
+              continue_command->body_count = 0;
+              continue_command->body_list = NULL;
+
+              breakpoint_set_commands (breakpoint, continue_command);
+            }
+        }
+    }
+*/
+}
+
+static unsigned int value_printer_max_depth = 10;
+
+static void
+show_value_printer_max_depth (struct ui_file *file, int from_tty,
+                              struct cmd_list_element *c, const char *value)
+{
+  fprintf_filtered (file, _("The maximum depth to which the OCaml value printer "
+			    "will descend into values is %s.\n"),
+		    value);
+}
+
+static char *search_path = NULL;
+
+static void
+show_search_path (struct ui_file *file, int from_tty,
+                  struct cmd_list_element *c, const char *value)
+{
+  fprintf_filtered (file, _("The search path for loading OCaml "
+			    ".cmi and .cmt files is %s.\n"),
+		    value);
+}
+
 void
 _initialize_ocaml_language (void)
 {
+  struct observer *observer;
   ocaml_type_data = gdbarch_data_register_post_init (build_ocaml_types);
 
   /* To work around the lack of support for symbol aliases in ELF,
@@ -502,4 +566,28 @@ _initialize_ocaml_language (void)
   readnow_symbol_files = 1;
 
   add_language (&ocaml_language_defn);
+
+  observer = observer_attach_inferior_created (inferior_created);
+
+  add_setshow_optional_filename_cmd ("ocaml-search-path", class_support,
+				     &search_path, _("\
+Set the search path (colon separated) for loading OCaml .cmi and .cmt files."),
+				     _("\
+Show the search path for loading OCaml .cmi and .cmt files."),
+				     _(""),
+				     NULL,
+				     show_search_path,
+				     &setlist, &showlist);
+
+  add_setshow_uinteger_cmd ("ocaml-value-printer-max-depth", no_class,
+			    &value_printer_max_depth, _("\
+Set the maximum depth to which the OCaml value printer will descend into values."), _("\
+Show the maximum depth to which the OCaml value printer will descend into values."),
+                            _(""),
+			    NULL,
+			    show_value_printer_max_depth,
+			    &setprintlist, &showprintlist);
+
+  ocaml_support_set_value_printer_max_depth (10);
+  ocaml_support_set_search_path (NULL);
 }

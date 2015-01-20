@@ -2,7 +2,7 @@
 (*                                                                     *)
 (*                 Debugger support library for OCaml                  *)
 (*                                                                     *)
-(*  Copyright 2013--2014, Jane Street Holding                          *)
+(*  Copyright 2013--2015, Jane Street Holding                          *)
 (*                                                                     *)
 (*  Licensed under the Apache License, Version 2.0 (the "License");    *)
 (*  you may not use this file except in compliance with the License.   *)
@@ -22,37 +22,27 @@ open Debug
 
 module T = Typedtree
 
-(* XXX work out how this is going to be set.
-   Even if the tree uses packing, it should be possible to install only the toplevel
-   modules' .cmi and .cmt files, into a distinguished directory. *)
-let cmt_directory = try Sys.getenv "CMT" with Not_found -> "/tmp"
+type t = {
+  cmt_cache : Cmt_cache.t;
+}
 
-let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
+let create ~search_path =
+  { cmt_cache = Cmt_cache.create ~search_path;
+  }
+
+let rec find_module_binding t ~dir_prefix ~path ~is_toplevel ~env =
   if debug then
     Printf.printf "find_module_binding: 1. path=%s\n%!" (print_path path);
   let path = Env.normalize_path None env path in
   let original_path = path in
   if debug then
     Printf.printf "find_module_binding: 2. path=%s\n%!" (print_path path);
-  (* CR mshinwell: sometimes (e.g. Thread_pool) the path doesn't contain the
-     pack prefix, and so the cmt file can't be found. *)
   match path with
   | Path.Pident ident ->
-    let lowercase_module_name = String.lowercase (Ident.name ident) in
-    let cmt_directory =
-      match dir_prefix with
-      | None -> cmt_directory
-      | Some dir_prefix -> Filename.concat cmt_directory dir_prefix
-    in
-    let cmt_name = lowercase_module_name ^ ".cmt" in
-    if debug then
-      Printf.printf "trying to read cmt: %s/%s\n%!" cmt_directory cmt_name;
-    let cmt =
-      Cmt_cache.read cmt_cache
-        ~pathname:(Filename.concat cmt_directory cmt_name)
-    in
-    if debug then
-      Printf.printf "Cmt_cache.read finished\n%!";
+    let unit_name = Ident.name ident in
+    if debug then Printf.printf "trying to read cmt for %s\n%!" unit_name;
+    let cmt = Cmt_cache.read t.cmt_cache ~unit_name:unit_name in
+    if debug then Printf.printf "Cmt_cache.read finished\n%!";
     begin match cmt with
     | Some (_cmi_infos_opt, Some cmt) ->
       if debug then Printf.printf "cmt read was successful\n%!";
@@ -94,7 +84,7 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
     if debug then Printf.printf "path %s, component %s\n%!"
       (print_path path) component;
     let binding =
-      find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel:false ~env
+      find_module_binding t ~dir_prefix ~path ~is_toplevel:false ~env
     in
     begin match binding with
     | `Not_found -> `Not_found
@@ -110,7 +100,7 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
         | None -> Some name
         | Some prefix -> Some (Filename.concat prefix name)
       in
-      find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel:false ~env
+      find_module_binding t ~dir_prefix ~path ~is_toplevel:false ~env
     | `Found_module mod_binding ->
       if debug then
         Printf.printf
@@ -192,7 +182,7 @@ let rec find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel ~env =
           if debug then
             Printf.printf "find_module_binding: 3. path=%s\n%!"
               (print_path path);
-          find_module_binding ~cmt_cache ~dir_prefix ~path ~is_toplevel:false
+          find_module_binding t ~dir_prefix ~path ~is_toplevel:false
             ~env
         (* CR mshinwell: cope with these *)
         | T.Tmod_functor _ ->
@@ -222,38 +212,35 @@ let print_env env =
     Printf.printf "print_env: name=%s path=%s\n%!" name (print_path path))
     None env ()
 
-let find_manifest_of_abstract_type =
-  let cmt_cache = Cmt_cache.create () in
-  fun ~formatter ~path ~env ->
-    if debug then
-      Printf.printf "finding abstract type: %s\n%!" (print_path path);
-    (* [path] must identify a type declaration.  However, watch out---it may be
-       unqualified. *)
-    (* XXX how do we cope with the unqualified cases?  Built-in types are one,
-       but presumably there may be others?  Not sure. *)
-    match path with
-    | Path.Pident _ -> None
-    | Path.Pdot _ | Path.Papply _ ->
-      let binding =
-        find_module_binding ~cmt_cache ~dir_prefix:None ~path ~is_toplevel:true
-          ~env
-      in
-      match binding with
-      | `Not_found | `Found_pack _ ->
-        if debug then Printf.printf "find_manifest: Not_found or pack\n%!";
-        None
-      | `Found_module _ -> assert false
-      | `Found_type_decl (path, type_decl, type_decl_env) ->
-        if debug then begin
-          Printf.printf "find_manifest: type decl found.  type_decl_env is:\n%!";
-          print_env type_decl_env;
-          Printf.printf "... and env is:\n%!";
-          print_env env;
-          Printtyp.type_declaration (Ident.create_persistent "foo")
-            formatter type_decl.T.typ_type;
-          Format.print_flush ()
-        end;
-        Some (path, type_decl.T.typ_type, type_decl_env)
+let find_manifest_of_abstract_type t ~formatter ~path ~env =
+  if debug then
+    Printf.printf "finding abstract type: %s\n%!" (print_path path);
+  (* [path] must identify a type declaration.  However, watch out---it may be
+     unqualified. *)
+  (* XXX how do we cope with the unqualified cases?  Built-in types are one,
+     but presumably there may be others?  Not sure. *)
+  match path with
+  | Path.Pident _ -> None
+  | Path.Pdot _ | Path.Papply _ ->
+    let binding =
+      find_module_binding t ~dir_prefix:None ~path ~is_toplevel:true ~env
+    in
+    match binding with
+    | `Not_found | `Found_pack _ ->
+      if debug then Printf.printf "find_manifest: Not_found or pack\n%!";
+      None
+    | `Found_module _ -> assert false
+    | `Found_type_decl (path, type_decl, type_decl_env) ->
+      if debug then begin
+        Printf.printf "find_manifest: type decl found.  type_decl_env is:\n%!";
+        print_env type_decl_env;
+        Printf.printf "... and env is:\n%!";
+        print_env env;
+        Printtyp.type_declaration (Ident.create_persistent "foo")
+          formatter type_decl.T.typ_type;
+        Format.print_flush ()
+      end;
+      Some (path, type_decl.T.typ_type, type_decl_env)
 (*
 val fold_types:
   (string -> Path.t -> type_declaration * type_descriptions -> 'a -> 'a) ->

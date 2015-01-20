@@ -25,6 +25,8 @@ struct gdb_ocaml_support {
                                       CORE_ADDR *vars_in_scope_values,
                                       int num_vars_in_scope,
                                       struct ui_file *stream);
+  void (*set_value_printer_max_depth) (int max_depth);
+  void (*set_search_path) (char *search_path);
 };
 
 extern struct gdb_ocaml_support *ocaml_support_library(void);
@@ -48,5 +50,8 @@ extern void ocaml_support_compile_and_run_expression (const char *expr_text,
                                                       CORE_ADDR *vars_in_scope_values,
                                                       int num_vars_in_scope,
                                                       struct ui_file *stream);
+
+extern void ocaml_support_set_value_printer_max_depth (int max_depth);
+extern void ocaml_support_set_search_path (char *search_path);
 
 #endif /*!OCAML_SUPPORT_H*/

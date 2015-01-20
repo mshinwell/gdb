@@ -2,7 +2,7 @@
 (*                                                                     *)
 (*                 Debugger support library for OCaml                  *)
 (*                                                                     *)
-(*  Copyright 2013--2014, Jane Street Holding                          *)
+(*  Copyright 2013--2015, Jane Street Holding                          *)
 (*                                                                     *)
 (*  Licensed under the Apache License, Version 2.0 (the "License");    *)
 (*  you may not use this file except in compliance with the License.   *)
@@ -53,12 +53,23 @@ let default_printer ?(separator = ",") ?prefix ~force_never_like_list
     | Some "XXX" -> ()
     | Some p -> Format.fprintf formatter "@[%s " p
     end;
-    for field = 0 to Gdb.Obj.size value - 1 do
+    (* CR mshinwell: get limits from main gdb *)
+    let original_size = Gdb.Obj.size value in
+    let max_size = 20 in
+    let size, truncated =
+      if original_size > max_size then max_size, true
+      else original_size, false
+    in
+    for field = 0 to size - 1 do
       if field > 0 then Format.fprintf formatter "%s@;<1 0>" separator;
       try printers.(field) (Gdb.Obj.field value field)
       with Gdb.Read_error _ ->
         Format.fprintf formatter "<field %d read failed>" field
     done;
+    if truncated then begin
+      Format.fprintf formatter "%s <%d elements follow>" separator
+          (original_size - max_size)
+    end;
     begin match prefix with
     | None -> Format.fprintf formatter "]@]"
     | Some "XXX" -> ()
@@ -100,6 +111,13 @@ let record ~fields_helpers ~formatter r =
 
 module T = Typedtree
 
+external search_path : unit -> string = "gdb_ocaml_value_printer_max_depth"
+let type_oracle =
+  Type_oracle.create ~search_path:(fun () -> String.split (search_path ()) ~on:':')
+
+external value_printer_max_depth : unit -> int
+  = "gdb_ocaml_value_printer_max_depth" "noalloc"
+
 let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
       ~summary ~formatter v =
 (*  Format.fprintf formatter "@[";*)
@@ -121,11 +139,11 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
         Format.fprintf formatter "?"
       end
   in
-  begin if (summary && depth > 2) || depth > 5 then
+  begin if (summary && depth > 2) || depth > value_printer_max_depth () then
     Format.fprintf formatter ".."
   else
     let type_info =
-      Type_oracle.find_type_information ~formatter ~type_expr_and_env
+      Type_oracle.find_type_information type_oracle ~formatter ~type_expr_and_env
         ~scrutinee:v
     in
     let default_printers =
@@ -308,7 +326,7 @@ let rec value ?(depth=0) ?(print_sig=true) ~type_of_ident:type_expr_and_env
       let s = Gdb.Obj.string v in
       let max_len = 30 in
       if String.length s > max_len then
-        Format.fprintf formatter "%S (* %d more chars follow *)"
+        Format.fprintf formatter "%S (* %d chars follow *)"
           (String.sub s 0 max_len) (String.length s - max_len)
       else
         Format.fprintf formatter "%S" (Gdb.Obj.string v)

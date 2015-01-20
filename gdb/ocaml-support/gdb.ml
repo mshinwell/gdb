@@ -72,7 +72,7 @@ module Target = struct
       let errcode = Priv.target_read_memory addr buf len in
       if errcode <> 0 then raise (Read_error errcode)
 
-  let priv_buf = String.create 8
+  let priv_buf = Bytes.create 8
   
   let read_memory addr priv_buf len =
     try read_memory_exn addr priv_buf len;
@@ -144,7 +144,7 @@ module Target_obj = struct
   let int x = Value.(to_int (shift_right x 1))
   let string x = (* CR mshinwell: need more descriptive names *)
     let size = size x * Target.arch_wo_size in
-    let buf = String.create size in
+    let buf = Bytes.create size in
     Target.read_memory_exn x buf size;
     let size = size - 1 - int_of_char buf.[size - 1] in
     String.sub buf 0 size

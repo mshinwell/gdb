@@ -2,7 +2,7 @@
 (*                                                                     *)
 (*                 Debugger support library for OCaml                  *)
 (*                                                                     *)
-(*  Copyright 2014, Jane Street Holding                                *)
+(*  Copyright 2014--2015, Jane Street Holding                          *)
 (*                                                                     *)
 (*  Licensed under the Apache License, Version 2.0 (the "License");    *)
 (*  you may not use this file except in compliance with the License.   *)
@@ -20,9 +20,9 @@
 
 type t
 
-val create : unit -> t
+val create : search_path:(unit -> string list) -> t
 
 val read
    : t
-  -> pathname:string
+  -> unit_name:string
   -> (Cmi_format.cmi_infos option * Cmt_format.cmt_infos option) option

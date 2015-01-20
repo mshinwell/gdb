@@ -64,6 +64,8 @@ ocaml_support_init (struct gdb_ocaml_support *stubs)
   SET_STUB (stubs, handle, partially_mangle);
   SET_STUB (stubs, handle, print_type);
   SET_STUB (stubs, handle, compile_and_run_expression);
+  SET_STUB (stubs, handle, set_value_printer_max_depth);
+  SET_STUB (stubs, handle, set_search_path);
 
   return handle;
 }
@@ -151,5 +153,25 @@ ocaml_support_compile_and_run_expression (const char *expr_text,
       stubs->compile_and_run_expression (expr_text, vars_in_scope_names,
                                          vars_in_scope_values, num_vars_in_scope,
                                          stream);
+    }
+}
+
+void
+ocaml_support_set_value_printer_max_depth (int max_depth)
+{
+  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  if (stubs && stubs->set_value_printer_max_depth)
+    {
+      return (stubs->set_value_printer_max_depth (max_depth));
+    }
+}
+
+void
+ocaml_support_set_search_path (char *search_path)
+{
+  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  if (stubs && stubs->set_search_path)
+    {
+      return (stubs->set_search_path (search_path));
     }
 }

@@ -18,8 +18,13 @@
 (*                                                                     *)
 (***********************************************************************)
 
+type t
+
+val create : search_path:(unit -> string list) -> t
+
 val find_manifest_of_abstract_type
-   : formatter:Format.formatter
+   : t
+  -> formatter:Format.formatter
   -> path:Path.t
   -> env:Env.t
   -> (Path.t * Types.type_declaration * Env.t) option

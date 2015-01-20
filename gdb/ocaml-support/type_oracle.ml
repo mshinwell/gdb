@@ -21,6 +21,14 @@
 open Std
 open Debug
 
+type t = {
+  abstraction_breaker : Abstraction_breaker.t;
+}
+
+let create ~search_path =
+  { abstraction_breaker = Abstraction_breaker.create ~search_path;
+  }
+
 let extract_constant_ctors ~cases =
   let constant_ctors, _ =
     List.fold_left cases
@@ -72,7 +80,7 @@ let check_predef_paths ~path ~args ~env ~scrutinee =
   else
     None
 
-let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
+let rec examine_type_expr t ~formatter ~paths_visited_so_far ~type_expr ~env
       ~scrutinee =
   match (Btype.repr type_expr).Types.desc with
   | Types.Tconstr (path, args, _abbrev_memo_ref) ->
@@ -97,7 +105,7 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
         end
       | Some type_decl ->
         if debug then Printf.printf "found.\n%!";
-        examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
+        examine_type_decl t ~formatter ~paths_visited_so_far ~type_expr ~env
           ~path ~args ~type_decl ~scrutinee
       end
     end
@@ -160,7 +168,7 @@ let rec examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
     assert false
 
 (* CR mshinwell: Should we use [Ctype.extract_concrete_typedecl]? *)
-and examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
+and examine_type_decl t ~formatter ~paths_visited_so_far ~type_expr ~env
       ~path ~args ~type_decl ~scrutinee =
   let params = type_decl.Types.type_params in
   if List.length params <> List.length args then begin
@@ -169,7 +177,7 @@ and examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
   end else begin
     match type_decl.Types.type_manifest with
     | Some type_expr ->
-      examine_type_expr ~formatter ~paths_visited_so_far ~type_expr ~env
+      examine_type_expr t ~formatter ~paths_visited_so_far ~type_expr ~env
         ~scrutinee
     | None ->
       begin match type_decl.Types.type_kind with
@@ -204,7 +212,7 @@ and examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
           `Abstract path  (* fail gracefully *)
         end else
           let paths_visited_so_far = path::paths_visited_so_far in
-          discover_manifest ~formatter ~paths_visited_so_far ~type_expr ~path
+          discover_manifest t ~formatter ~paths_visited_so_far ~type_expr ~path
             ~args ~env ~scrutinee
       | Types.Type_record (field_decls, record_repr) ->
         begin match scrutinee with
@@ -226,15 +234,16 @@ and examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
   end
 
 (* CR-soon mshinwell: try removing [type_expr], probably redundant *)
-and discover_manifest ~formatter ~paths_visited_so_far ~type_expr ~path
+and discover_manifest t ~formatter ~paths_visited_so_far ~type_expr ~path
       ~args ~env ~scrutinee =
   let manifest =
-    Abstraction_breaker.find_manifest_of_abstract_type ~formatter ~path ~env
+    Abstraction_breaker.find_manifest_of_abstract_type t.abstraction_breaker
+        ~formatter ~path ~env
   in
   match manifest with
   | None -> `Abstract path  (* couldn't find manifest; fail gracefully *)
   | Some (path, type_decl, env) ->
-    examine_type_decl ~formatter ~paths_visited_so_far ~type_expr ~env
+    examine_type_decl t ~formatter ~paths_visited_so_far ~type_expr ~env
       ~path ~args ~type_decl ~scrutinee
 
 let string_of_result = function
@@ -262,7 +271,7 @@ let string_of_result = function
   | `Abstract_tag -> "Abstract_tag"
   | `Custom -> "Custom"
 
-let find_type_information ~formatter ~type_expr_and_env ~scrutinee =
+let find_type_information t ~formatter ~type_expr_and_env ~scrutinee =
   if debug then begin
     Printf.printf "find_type_information starting, type info present? %s\n%!"
       (match type_expr_and_env with None -> "no" | Some _ -> "yes")
@@ -272,7 +281,7 @@ let find_type_information ~formatter ~type_expr_and_env ~scrutinee =
       match type_expr_and_env with
       | None -> `Obj_unboxed
       | Some (type_expr, env) ->
-        examine_type_expr ~formatter ~paths_visited_so_far:[] ~type_expr ~env
+        examine_type_expr t ~formatter ~paths_visited_so_far:[] ~type_expr ~env
           ~scrutinee:(`Unboxed scrutinee)
     else
       let tag = Gdb.Obj.tag scrutinee in
@@ -281,7 +290,7 @@ let find_type_information ~formatter ~type_expr_and_env ~scrutinee =
         begin match type_expr_and_env with
         | None -> `Obj_boxed_traversable
         | Some (type_expr, env) ->
-          examine_type_expr ~formatter ~paths_visited_so_far:[] ~type_expr ~env
+          examine_type_expr t ~formatter ~paths_visited_so_far:[] ~type_expr ~env
             ~scrutinee:(`Boxed scrutinee)
         end
       | tag when tag = Obj.string_tag -> `String

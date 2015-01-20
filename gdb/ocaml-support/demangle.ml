@@ -31,26 +31,26 @@ let () =
   Callback.register "gdb_ocaml_support_partially_mangle" partially_mangle
 
 let demangle mangled =
-  let str = String.copy mangled in
+  let str = Bytes.copy mangled in
   let rec loop i j =
-    if j >= String.length str then
+    if j >= Bytes.length str then
       i
-    else if str.[j] = '_' && j + 1 < String.length str && str.[j + 1] = '_' then (
+    else if str.[j] = '_' && j + 1 < Bytes.length str && str.[j + 1] = '_' then (
       (* So, here is the funny part: there's no way to distinguish between "__" inserted
           by [Compilenv.make_symbol] (see asmcomp/compilenv.ml) and names containing
           "__".
           We are just going to assume that people never use "__" in their name (although
           we know for a fact that this happens in Core.) *)
       (* CR mshinwell: fix the above *)
-      str.[i] <- '.' ;
+      Bytes.set str i '.';
       loop (i + 1) (j + 2)
     ) else (
-      str.[i] <- str.[j] ;
+      Bytes.set str i str.[j];
       loop (i + 1) (j + 1)
     )
   in
   let len = loop 0 0 in
-  String.sub str ~pos:0 ~len
+  Bytes.sub str 0 len
 
 (* CR mshinwell: fix the compiler so that [code_begin] and friends gain the
    [__ocaml] prefix. *)
