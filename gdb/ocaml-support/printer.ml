@@ -28,8 +28,8 @@ module Make (D : Debugger.S) = struct
     type_oracle : Type_oracle.t;
   }
 
-  let create () =
-    { type_oracle = Type_oracle.create ~search_path:D.cmt_search_path;
+  let create ~cmt_cache =
+    { type_oracle = Type_oracle.create ~cmt_cache;
     }
 
   let print_type_of_value ~formatter ~type_expr_and_env =
