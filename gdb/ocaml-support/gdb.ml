@@ -169,3 +169,10 @@ module Target_obj = struct
 end
 
 module Obj = Target_obj
+
+
+            (D.Priv.gdb_symtab_filename symtab) line
+        | Some {D.Priv. symtab} ->
+          Format.fprintf formatter "<fun> (%s, 0x%Lx)"
+            (D.Priv.gdb_symtab_filename symtab)
+            pc

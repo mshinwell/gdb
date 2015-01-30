@@ -159,7 +159,7 @@ let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site ~summary =
   Printer.value ~depth ~print_sig:true ~type_of_ident ~summary out v
 
 let val_print addr stream ~dwarf_type ~call_site ~summary =
-  let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
+  let source_file_path, symbol_linkage_name = Dwarf_type.decode_dwarf_type dwarf_type in
   let cmt_file = cmt_file_of_source_file_path ~source_file_path in
   if Debug.debug then begin
     match call_site with

@@ -13,6 +13,7 @@ SRC=gdb_ocaml_support.c ml_gdb.c std.ml gdb.ml debug.ml \
     list_oracle.mli list_oracle.ml \
     type_oracle.mli type_oracle.ml \
     print_closure.mli print_closure.ml \
+    dwarf_type.ml \
     demangle.ml printer.ml compile_and_run.ml gdb_ocaml.ml
 TARGET_LIB=libgdb_ocaml_support.so
 

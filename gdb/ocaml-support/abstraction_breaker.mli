@@ -2,7 +2,7 @@
 (*                                                                     *)
 (*                 Debugger support library for OCaml                  *)
 (*                                                                     *)
-(*  Copyright 2014, Jane Street Holding                                *)
+(*  Copyright 2014--2015, Jane Street Holding                          *)
 (*                                                                     *)
 (*  Licensed under the Apache License, Version 2.0 (the "License");    *)
 (*  you may not use this file except in compliance with the License.   *)
@@ -20,7 +20,7 @@
 
 type t
 
-val create : search_path:(unit -> string list) -> t
+val create : cmt_cache:Cmt_cache.t -> t
 
 val find_manifest_of_abstract_type
    : t

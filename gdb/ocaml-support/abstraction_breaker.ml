@@ -26,8 +26,8 @@ type t = {
   cmt_cache : Cmt_cache.t;
 }
 
-let create ~search_path =
-  { cmt_cache = Cmt_cache.create ~search_path;
+let create ~cmt_cache =
+  { cmt_cache;
   }
 
 let rec find_module_binding t ~dir_prefix ~path ~is_toplevel ~env =
