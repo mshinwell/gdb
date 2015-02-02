@@ -18,7 +18,7 @@ let decode_dwarf_type dwarf_type =
     | None -> None, None
     | Some delimiter when delimiter <= String.length magic -> None, None
     | Some delimiter -> begin
-      let source_file_path =
+      let output_path =
         String.sub dwarf_type (String.length magic)
           (delimiter - (String.length magic))
       in
@@ -27,7 +27,7 @@ let decode_dwarf_type dwarf_type =
           ((String.length dwarf_type) - (delimiter + 1))
       in
       if Debug.debug then
-        Printf.eprintf "source file path '%s' symbol linkage name '%s'\n%!"
-          source_file_path symbol_linkage_name;
-      Some source_file_path, Some symbol_linkage_name
+        Printf.eprintf "output path '%s' symbol linkage name '%s'\n%!"
+          output_path symbol_linkage_name;
+      Some output_path, Some symbol_linkage_name
     end

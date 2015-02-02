@@ -18,200 +18,203 @@
 (*                                                                     *)
 (***********************************************************************)
 
-(* CR mshinwell: transition to using [Core_kernel] *)
-open Std
+module M = Main.Make (struct
+  (* Basic GDB types *)
+  type addr = int64
+  type gdb_stream
 
-let strip_parameter_index_from_unique_name unique_name =
-  match try Some (String.rindex unique_name '-') with Not_found -> None with
-  | None -> unique_name
-  | Some dash ->
-    match try Some (String.rindex unique_name '_') with Not_found -> None with
-    | None -> unique_name
-    | Some underscore ->
-      if underscore < dash then begin
-        let stamp_ok =
-          try
-            ignore (int_of_string (String.sub unique_name
-                (dash + 1) ((String.length unique_name) - (dash + 1))));
-            true
-          with Failure _ -> false
-        in
-        if stamp_ok then
-          String.sub unique_name 0 dash
-        else
-          unique_name
-      end
-      else
-        unique_name
+  module Priv = struct
+    (* GDB primitive functions *)
+    external find_in_path : string -> string option = "ml_gdb_find_in_path"
 
-let parameter_index_of_unique_name unique_name =
-  match try Some (String.rindex unique_name '-') with Not_found -> None with
-  | None -> None
-  | Some dash ->
-    match try Some (String.rindex unique_name '_') with Not_found -> None with
-    | None -> None
-    | Some underscore ->
-      if underscore < dash then
-        try
-          Some (int_of_string (String.sub unique_name
-              (dash + 1) ((String.length unique_name) - (dash + 1))))
-        with Failure _ -> None
-      else
-        None
+    external target_read_memory 
+      : addr -> string -> int -> int 
+      = "ml_gdb_target_read_memory"
+    
+    external copy_double
+      : string -> float
+      = "ml_gdb_copy_double"
+    
+    external copy_int64
+      : string -> int64
+      = "ml_gdb_copy_int64"
+    
+    external copy_int32
+      : string -> int32
+      = "ml_gdb_copy_int32"
 
-(* CR mshinwell: we should have proper abstract types for the stamped names *)
+    external gdb_print_filtered 
+      : gdb_stream -> string -> unit 
+      = "ml_gdb_print_filtered"
 
-let rec type_is_polymorphic type_expr =
-  let rec check_type_desc = function
-    | Types.Tvar _ -> true
-    | Types.Tarrow (_, t1, t2, _) -> type_is_polymorphic t1 || type_is_polymorphic t2
-    | Types.Tconstr (_, tys, _)
-    | Types.Ttuple tys -> List.exists tys ~f:type_is_polymorphic
-    | Types.Tobject _ -> true (* CR mshinwell: fixme *)
-    | Types.Tnil -> false
-    | Types.Tlink ty
-    | Types.Tsubst ty -> type_is_polymorphic ty
-    | Types.Tfield _ -> true (* CR mshinwell: fixme *)
-    | Types.Tvariant _ -> true (* CR mshinwell: fixme *)
-    | Types.Tunivar _ -> false
-    | Types.Tpoly _ -> true (* CR mshinwell: fixme *)
-    | Types.Tpackage _ -> true (* CR mshinwell: fixme *)
-  in
-  check_type_desc type_expr.Types.desc
+    type symtab
+    type symtab_and_line = {
+      symtab : symtab;
+      line : int option;
+      addr_pc : addr;
+      addr_end : addr;
+    }
 
-module Call_site = struct
-  type t =
-  | None
-  | Some of string * int * int  (* filename, line number, column number *)
-end
+    external gdb_function_linkage_name_at_pc
+      : addr -> string option
+      = "ml_gdb_function_linkage_name_at_pc"
 
-let find_type_and_env ~symbol_linkage_name ~cmt_file ~call_site =
-  match symbol_linkage_name with
-  | None -> None
-  | Some symbol_linkage_name ->
-    if Debug.debug then
-      Printf.printf "(1) symbol_linkage_name='%s'\n%!" symbol_linkage_name;
-    let action =
-      let unique_name = strip_parameter_index_from_unique_name symbol_linkage_name in
-      if Debug.debug then Printf.printf "(1) unique_name='%s'\n%!" unique_name;
-      match Cmt_file.type_of_ident cmt_file ~unique_name with
-      | None ->
-        if Debug.debug then Printf.printf "`Try_call_site_but_fallback_to None\n%!";
-        `Try_call_site_but_fallback_to None
-      | Some (type_expr, env) ->
-        if type_is_polymorphic type_expr then
-          `Try_call_site_but_fallback_to (Some (type_expr, env))
-        else
-          `Have_type (type_expr, env)
-    in
-    match action with
-    | `Have_type (type_expr, env) -> Some (type_expr, env)
-    | `Try_call_site_but_fallback_to fallback -> fallback
-(* CR mshinwell: fix this--we need to develop the newer ideas, e.g. numbering call
-   points
-      match call_site with
-      | Call_site.None -> fallback
-      | Call_site.Some (source_file, line_number, column_number) ->
-        if Debug.debug then
-          Printf.printf "call site info: file %s, line %d, column %d\n%!"
-            source_file line_number column_number;
-        let from_call_site =
-          Cmt_file.find_argument_types
-            (cmt_file_of_source_file_path (Some source_file))
-            ~source_file_of_call_site:source_file
-            ~line_number_of_call_site:line_number
-            ~column_number_of_call_site:column_number
-        in
-        match from_call_site with
-        | None ->
-          if Debug.debug then Printf.printf "find_argument_types failed\n%!";
-          fallback
-        | Some (type_exprs, env) ->
-          if Debug.debug then
-            Printf.printf "(2) symbol_linkage_name='%s'\n%!" symbol_linkage_name;
-          match parameter_index_of_unique_name symbol_linkage_name with
-          | None ->
-            if Debug.debug then
-              Printf.printf "(symbol linkage name doesn't give \
-                the parameter index)\n%!";
-            fallback
-          | Some parameter_index ->
-            if Debug.debug then
-              Printf.printf "'%s': parameter index %d: "
-                symbol_linkage_name parameter_index;
-            if parameter_index < 0 || parameter_index >= List.length type_exprs then
-              fallback
-            else
-              match (Array.of_list type_exprs).(parameter_index) with
-              | `Ty type_expr ->
-                if Debug.debug then Printf.printf "found type.\n%!";
-                Some (type_expr, env)
-              | `Recover_label_ty label ->
-                (* CR mshinwell: need to fix this.  Unfortunately [label] is not
-                   stamped, which might make it troublesome to find the correct
-                   identifier. *)
-                if Debug.debug then Printf.printf "using fallback.\n%!";
-                fallback *)
+    external gdb_find_pc_line
+      : addr -> not_current:bool -> symtab_and_line option
+      = "ml_gdb_find_pc_line"
 
-(* CR mshinwell: there are THREE functions by the name of [val_print] now *)
-let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site ~summary =
-  let type_of_ident = find_type_and_env ~symbol_linkage_name ~cmt_file ~call_site in
-  Printer.value ~depth ~print_sig:true ~type_of_ident ~summary out v
+    external gdb_symtab_filename
+      : symtab -> string
+      = "ml_gdb_symtab_filename"
 
-let val_print addr stream ~dwarf_type ~call_site ~summary =
-  let source_file_path, symbol_linkage_name = Dwarf_type.decode_dwarf_type dwarf_type in
-  let cmt_file = cmt_file_of_source_file_path ~source_file_path in
-  if Debug.debug then begin
-    match call_site with
-    | Call_site.None -> Printf.printf "no call point info\n%!"
-    | Call_site.Some (file, line, column) ->
-      Printf.printf "call point: %s:%d:%d\n%!" file line column
-  end;
-  val_print ~depth:0 addr stream ~symbol_linkage_name ~cmt_file ~call_site ~summary
+    (* Expected type of callbacks *)
+    type callback_print_val
+      = addr -> gdb_stream -> unit
+    type callback_demangle
+      = string -> int -> string
+  end
 
-let () = Callback.register "gdb_ocaml_support_val_print" val_print
+  let print = Priv.gdb_print_filtered
+  let print_endline out = print out "\n"
+  let printf stream = Printf.ksprintf (print stream)
 
-let print_type ~dwarf_type ~out =
-  let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
-  (* CR mshinwell: we can share some of this code with above.
-     mshinwell: MUST not can *)
-  let status =
-    match symbol_linkage_name with
-    | None ->
-      if Debug.debug then
-        Printf.printf "print_type: can't find symbol linkage name\n%!";
-      `Unknown
-    | Some symbol_linkage_name ->
-      let symbol_linkage_name =
-        strip_parameter_index_from_unique_name symbol_linkage_name
-      in
-      if Debug.debug then
-        Printf.printf "print_type: linkage name='%s'\n%!" symbol_linkage_name;
-      let cmt_file = cmt_file_of_source_file_path ~source_file_path in
-      let type_of_ident =
-        Cmt_file.type_of_ident cmt_file ~unique_name:symbol_linkage_name
-      in
-      match type_of_ident with
-      | None ->
-        if Debug.debug then
-          Printf.printf "print_type: '%s' not found in cmt\n%!" symbol_linkage_name;
-        `Unknown
-      | Some (type_expr, _env) -> `Ok type_expr
-  in
-  match status with
-  | `Unknown -> Gdb.print out "<unknown>"
-  | `Ok type_expr ->
-    let formatter =
-      Format.make_formatter
-        (fun str pos len -> Gdb.print out (String.sub str pos len))
-        (fun () -> ())
-    in
-    Printtyp.reset_and_mark_loops type_expr;
-    Printtyp.type_expr formatter type_expr;
-    Format.pp_print_flush formatter ()
+  exception Read_error of int
 
-let () = Callback.register "gdb_ocaml_support_print_type" print_type
+  module Target = struct
+    module Value = Int64
+    let arch_wo_size = 8
+    let wo_tag w  = Value.(to_int (logand w 255L))
+    let wo_size w = Value.(to_int (shift_right_logical w 10))
+
+    let read_memory_exn addr buf len =
+      if String.length buf < len
+      then invalid_arg "read_memory: len > String.length buf"
+      else 
+        let errcode = Priv.target_read_memory addr buf len in
+        if errcode <> 0 then raise (Read_error errcode)
+
+    let priv_buf = Bytes.create 8
+    
+    let read_memory addr priv_buf len =
+      try read_memory_exn addr priv_buf len;
+          `Ok
+      with Read_error n -> `Errcode n
+    
+    let read_int32 addr =
+      read_memory_exn addr priv_buf 4;
+      Priv.copy_int32 priv_buf
+
+    let read_int64 addr =
+      read_memory_exn addr priv_buf 8;
+      Priv.copy_int64 priv_buf
+
+    let read_value = read_int64
+
+    let read_double addr =
+      read_memory_exn addr priv_buf 8;
+      Priv.copy_double priv_buf
+
+    let read_field addr offset = 
+      read_value Value.(add addr (of_int (arch_wo_size * offset)))
+
+    let read_double_field addr offset =
+      read_double Value.(add addr (of_int (8 * offset)))
+  end
+
+  module Target_obj = struct
+    open Target
+    let arch_wo_size_minus_one = Value.(of_int (Target.arch_wo_size - 1))
+
+    type t = addr
+
+    let lazy_tag         = Obj.lazy_tag        
+    let closure_tag      = Obj.closure_tag     
+    let object_tag       = Obj.object_tag      
+    let infix_tag        = Obj.infix_tag       
+    let forward_tag      = Obj.forward_tag     
+    let no_scan_tag      = Obj.no_scan_tag     
+    let abstract_tag     = Obj.abstract_tag    
+    let string_tag       = Obj.string_tag      
+    let double_tag       = Obj.double_tag      
+    let double_array_tag = Obj.double_array_tag
+    let custom_tag       = Obj.custom_tag      
+    let int_tag          = Obj.int_tag         
+    let unaligned_tag    = Obj.unaligned_tag   
+
+    (* Not correctly handled *)
+    let out_of_heap_tag  = Obj.out_of_heap_tag         
+
+    let is_int       x = Value.(logand x one = one)
+    let is_unaligned x = Value.(logand x arch_wo_size_minus_one <> zero)
+
+    let tag x = 
+      if is_int x then int_tag
+      else if is_unaligned x then unaligned_tag
+      else try Target.wo_tag (read_field x (-1) )
+           with Read_error n -> out_of_heap_tag
+
+    let is_block x = not (is_int x || is_unaligned x)
+
+    let size x = Target.wo_size (read_field x (-1))
+    
+    let field t i = Target.read_field t i
+    let double_field t i = Target.read_double_field t i
+
+    let add_offset t i = Value.(add t (of_int32 i))
+
+    let int x = Value.(to_int (shift_right x 1))
+    let string x = (* CR mshinwell: need more descriptive names *)
+      let size = size x * Target.arch_wo_size in
+      let buf = Bytes.create size in
+      Target.read_memory_exn x buf size;
+      let size = size - 1 - int_of_char buf.[size - 1] in
+      String.sub buf 0 size
+
+    (* Read a NULL-terminated string that is pointed to by field [i] of the value
+       (or structure with equivalent layout) at address [t]. *)
+    let c_string_field t i =
+      let ptr = ref (field t i) in
+      let result = ref "" in
+      let finished = ref false in
+      while not !finished do
+        let buf = Bytes.create 1 in
+        read_memory_exn !ptr buf 1;
+        if String.get buf 0 = '\000' then
+          finished := true
+        else begin
+          result := !result ^ buf;
+          ptr := Int64.add !ptr (Int64.of_int 1)
+        end
+      done;
+      !result
+  end
+
+  module Obj = Target_obj
+
+
+              (D.Priv.gdb_symtab_filename symtab) line
+          | Some {D.Priv. symtab} ->
+            Format.fprintf formatter "<fun> (%s, 0x%Lx)"
+              (D.Priv.gdb_symtab_filename symtab)
+              pc
+
+
+
+  let formatter ~stream =
+    Format.make_formatter
+      (fun str pos len -> Gdb.print stream (String.sub str pos len))
+      (fun () -> ())
+
+end)
+
+let () =
+  Callback.register "gdb_ocaml_support_val_print"
+    M.print_value
+
+let () =
+  Callback.register "gdb_ocaml_support_print_type"
+    M.print_type
 
 let () =
   Callback.register "gdb_ocaml_support_compile_and_run_expression"
-    Compile_and_run.compile_and_run_expression
+    M.compile_and_run_expression

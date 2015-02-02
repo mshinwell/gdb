@@ -78,3 +78,61 @@ end
 
 let fst3 (a, _b, _c) = a
 let trd3 (_a, _b, c) = c
+
+let strip_parameter_index_from_unique_name unique_name =
+  match try Some (String.rindex unique_name '-') with Not_found -> None with
+  | None -> unique_name
+  | Some dash ->
+    match try Some (String.rindex unique_name '_') with Not_found -> None with
+    | None -> unique_name
+    | Some underscore ->
+      if underscore < dash then begin
+        let stamp_ok =
+          try
+            ignore (int_of_string (String.sub unique_name
+                (dash + 1) ((String.length unique_name) - (dash + 1))));
+            true
+          with Failure _ -> false
+        in
+        if stamp_ok then
+          String.sub unique_name 0 dash
+        else
+          unique_name
+      end
+      else
+        unique_name
+
+let parameter_index_of_unique_name unique_name =
+  match try Some (String.rindex unique_name '-') with Not_found -> None with
+  | None -> None
+  | Some dash ->
+    match try Some (String.rindex unique_name '_') with Not_found -> None with
+    | None -> None
+    | Some underscore ->
+      if underscore < dash then
+        try
+          Some (int_of_string (String.sub unique_name
+              (dash + 1) ((String.length unique_name) - (dash + 1))))
+        with Failure _ -> None
+      else
+        None
+
+(* CR mshinwell: we should have proper abstract types for the stamped names *)
+
+let rec type_is_polymorphic type_expr =
+  let rec check_type_desc = function
+    | Types.Tvar _ -> true
+    | Types.Tarrow (_, t1, t2, _) -> type_is_polymorphic t1 || type_is_polymorphic t2
+    | Types.Tconstr (_, tys, _)
+    | Types.Ttuple tys -> List.exists tys ~f:type_is_polymorphic
+    | Types.Tobject _ -> true (* CR mshinwell: fixme *)
+    | Types.Tnil -> false
+    | Types.Tlink ty
+    | Types.Tsubst ty -> type_is_polymorphic ty
+    | Types.Tfield _ -> true (* CR mshinwell: fixme *)
+    | Types.Tvariant _ -> true (* CR mshinwell: fixme *)
+    | Types.Tunivar _ -> false
+    | Types.Tpoly _ -> true (* CR mshinwell: fixme *)
+    | Types.Tpackage _ -> true (* CR mshinwell: fixme *)
+  in
+  check_type_desc type_expr.Types.desc

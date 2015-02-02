@@ -36,6 +36,10 @@ module type S = sig
 
   (* Display of text to the user of the debugger. *)
   val print : ??? -> string -> unit
+  module Stream : sig
+    type t
+    val to_formatter : t -> Format.formatter
+  end
 
   (* The linkage name of the function containing the program counter
      value [pc]. *)
