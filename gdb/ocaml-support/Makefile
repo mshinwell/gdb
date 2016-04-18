@@ -8,7 +8,7 @@ CFLAGS='-fPIC -I .. -I ../common -I ../../include -ggdb -I../../../mshinwell-oca
 OCAMLFLAGS=-I $(OCAML_LIB)/compiler-libs -I /home/mark/dev/mshinwell-ocaml/typing/ -g -fPIC
 SRC=gdb_ocaml_support.c ml_gdb.c std.ml gdb.ml debug.ml \
     cmt_cache.mli cmt_cache.ml \
-    cmt_file.mli cmt_file.ml \
+    cmt_file.mli cmt_file.ml dwarf_type.ml \
     abstraction_breaker.mli abstraction_breaker.ml \
     list_oracle.mli list_oracle.ml \
     type_oracle.mli type_oracle.ml \

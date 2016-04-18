@@ -21,6 +21,28 @@
 (* CR mshinwell: transition to using [Core_kernel] *)
 open Std
 
+let debug = false
+
+let cmt_file_of_source_file_path =
+  let cache = Hashtbl.create 10 in
+  fun ~source_file_path -> (* CR mshinwell: rename *)
+    match source_file_path with
+    | None ->
+      if debug then Printf.printf "not looking for cmt (no source path)\n%!";
+      Cmt_file.create_null ()
+    | Some source_file_path ->
+      try
+        let cmt = Hashtbl.find cache source_file_path in
+        if debug then
+          Printf.printf "cmt %s already in the cache\n%!" source_file_path;
+        cmt
+      with Not_found ->
+        let filename = source_file_path ^ ".cmt" in
+        if debug then Printf.printf "looking for cmt: %s\n%!" filename;
+        let cmt = Cmt_file.load ~filename in
+        Hashtbl.add cache source_file_path cmt;
+        cmt
+
 let strip_parameter_index_from_unique_name unique_name =
   match try Some (String.rindex unique_name '-') with Not_found -> None with
   | None -> unique_name
@@ -159,7 +181,7 @@ let val_print ~depth v out ~symbol_linkage_name ~cmt_file ~call_site ~summary =
   Printer.value ~depth ~print_sig:true ~type_of_ident ~summary out v
 
 let val_print addr stream ~dwarf_type ~call_site ~summary =
-  let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
+  let source_file_path, symbol_linkage_name = Dwarf_type.decode_dwarf_type dwarf_type in
   let cmt_file = cmt_file_of_source_file_path ~source_file_path in
   if Debug.debug then begin
     match call_site with
@@ -172,7 +194,7 @@ let val_print addr stream ~dwarf_type ~call_site ~summary =
 let () = Callback.register "gdb_ocaml_support_val_print" val_print
 
 let print_type ~dwarf_type ~out =
-  let source_file_path, symbol_linkage_name = decode_dwarf_type dwarf_type in
+  let source_file_path, symbol_linkage_name = Dwarf_type.decode_dwarf_type dwarf_type in
   (* CR mshinwell: we can share some of this code with above.
      mshinwell: MUST not can *)
   let status =
