@@ -60,7 +60,7 @@ struct gdb_ocaml_support {
   void (*set_search_path) (char *search_path);
 };
 
-#define LIB_SUPPORT "libmonda.so"
+#define LIB_SUPPORT "libmonda_gdb.so"
 
 #define SET_STUB(stubs,handle,name) \
   stubs->name = dlsym(handle, "monda_" #name)
