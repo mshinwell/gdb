@@ -60,10 +60,10 @@ struct gdb_ocaml_support {
   void (*set_search_path) (char *search_path);
 };
 
-#define LIB_SUPPORT "libocaml_debugger_support.so"
+#define LIB_SUPPORT "libmonda.so"
 
 #define SET_STUB(stubs,handle,name) \
-  stubs->name = dlsym(handle, "ocaml_debugger_support_" #name)
+  stubs->name = dlsym(handle, "monda_" #name)
 
 static void *
 initialise_debugger_support_library (struct gdb_ocaml_support *stubs)
@@ -79,7 +79,7 @@ initialise_debugger_support_library (struct gdb_ocaml_support *stubs)
       return NULL;
     }
 
-  support_init = dlsym (handle, "ocaml_debugger_support_init");
+  support_init = dlsym (handle, "monda_init");
   if (support_init == NULL)
     {
       fprintf (stderr, 
