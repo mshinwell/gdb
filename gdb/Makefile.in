@@ -864,6 +864,7 @@ SFILES = ada-exp.y ada-lang.c ada-typeprint.c ada-valprint.c ada-tasks.c \
 	memrange.c mi/mi-common.c \
 	namespace.c \
 	objc-lang.c \
+        ocaml-lang.c \
 	objfiles.c osabi.c observer.c osdata.c \
 	opencl-lang.c \
 	p-exp.y p-lang.c p-typeprint.c p-valprint.c parse.c printcmd.c \
@@ -959,7 +960,7 @@ config/i386/nm-fbsd.h \
 config/nm-nto.h config/sparc/nm-sol2.h config/nm-linux.h \
 top.h bsd-kvm.h gdb-stabs.h reggroups.h \
 annotate.h sim-regno.h dictionary.h dfp.h main.h frame-unwind.h	\
-remote-fileio.h i386-linux-tdep.h vax-tdep.h objc-lang.h \
+remote-fileio.h i386-linux-tdep.h vax-tdep.h objc-lang.h ocaml-lang.h \
 sentinel-frame.h bcache.h symfile.h windows-tdep.h linux-tdep.h \
 gdb_usleep.h jit.h xml-syscall.h microblaze-tdep.h \
 psymtab.h psympriv.h progspace.h bfin-tdep.h \
@@ -1054,7 +1055,7 @@ COMMON_OBS = $(DEPFILES) $(CONFIG_OBS) $(YYOBJ) \
 	dbxread.o coffread.o coff-pe-read.o \
 	dwarf2read.o mipsread.o stabsread.o corefile.o \
 	dwarf2expr.o dwarf2loc.o dwarf2-frame.o dwarf2-frame-tailcall.o \
-	ada-lang.o c-lang.o d-lang.o f-lang.o objc-lang.o \
+	ada-lang.o c-lang.o d-lang.o f-lang.o objc-lang.o ocaml-lang.o \
 	ada-tasks.o ada-varobj.o c-varobj.o \
 	ui-out.o cli-out.o \
 	varobj.o vec.o \
@@ -1127,7 +1128,7 @@ generated_files = config.h observer.h observer.inc ada-lex.c jit-reader.h \
 	$(COMPILE) $<
 	$(POSTCOMPILE)
 
-all: gdb$(EXEEXT) $(CONFIG_ALL)
+all: gdb$(EXEEXT) $(CONFIG_ALL) ocaml-support
 	@$(MAKE) $(FLAGS_TO_PASS) DO=all "DODIRS=`echo $(SUBDIRS) | sed 's/testsuite//'`" subdir_do
 
 installcheck:
@@ -2716,6 +2717,9 @@ py-varobj.o: $(srcdir)/python/py-varobj.c
 	$(COMPILE) $(PYTHON_CFLAGS) $(srcdir)/python/py-varobj.c
 	$(POSTCOMPILE)
 
+.PHONY: ocaml-support
+ocaml-support:
+	$(MAKE) -C ocaml-support
 #
 # Dependency tracking.  Most of this is conditional on GNU Make being
 # found by configure; if GNU Make is not found, we fall back to a

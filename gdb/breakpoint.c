@@ -15956,6 +15956,12 @@ breakpoint_free_objfile (struct objfile *objfile)
       loc->symtab = NULL;
 }
 
+int
+get_internal_breakpoint_number (void)
+{
+  return internal_breakpoint_number;
+}
+
 void
 initialize_breakpoint_ops (void)
 {

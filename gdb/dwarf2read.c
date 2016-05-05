@@ -71,6 +71,7 @@
 #include "build-id.h"
 #include "namespace.h"
 
+#include <stdio.h>
 #include <fcntl.h>
 #include <sys/types.h>
 
@@ -8448,7 +8449,9 @@ dwarf2_compute_name (const char *name,
      will set the demangled name to the result of dwarf2_full_name, and it is
      the demangled name that GDB uses if it exists.  */
   if (cu->language == language_ada
-      || (cu->language == language_fortran && physname))
+      || (cu->language == language_fortran && physname)
+      /* We need access to the stamped (linkage) names in gdb. */
+      || cu->language == language_ocaml)
     {
       /* For Ada unit, we prefer the linkage name over the name, as
 	 the former contains the exported name, which the user expects
@@ -9224,6 +9227,10 @@ read_file_scope (struct die_info *die, struct dwarf2_cu *cu)
   /* Similar hack for Go.  */
   if (cu->producer && strstr (cu->producer, "GNU Go ") != NULL)
     set_cu_language (DW_LANG_Go, cu);
+
+  /* Likewise for OCaml.  */
+  if (cu->producer && strstr (cu->producer, "ocamlopt ") != NULL)
+    cu->language = language_ocaml;
 
   dwarf2_start_symtab (cu, name, comp_dir, lowpc);
 

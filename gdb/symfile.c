@@ -56,6 +56,7 @@
 #include "stack.h"
 #include "gdb_bfd.h"
 #include "cli/cli-utils.h"
+#include "ocaml-lang.h"
 
 #include <sys/types.h>
 #include <fcntl.h>
@@ -1699,7 +1700,11 @@ set_initial_language (void)
       char *name = main_name ();
       struct symbol *sym = lookup_symbol (name, NULL, VAR_DOMAIN, NULL).symbol;
 
-      if (sym != NULL)
+      /* For OCaml, [caml_start_program] is actually in a C object file, so
+         we need to force [language_ocaml] here. */
+      if (!strcmp (name, OCAML_MAIN))
+        lang = language_ocaml;
+      else if (sym != NULL)
 	lang = SYMBOL_LANGUAGE (sym);
     }
 
@@ -2863,6 +2868,11 @@ init_filename_language_table (void)
       add_filename_language (".F03", language_fortran);
       add_filename_language (".f08", language_fortran);
       add_filename_language (".F08", language_fortran);
+      add_filename_language (".ml", language_ocaml);
+      add_filename_language (".mli", language_ocaml);
+      add_filename_language (".mll", language_ocaml);
+      add_filename_language (".mlp", language_ocaml);
+      add_filename_language (".mly", language_ocaml);
       add_filename_language (".s", language_asm);
       add_filename_language (".sx", language_asm);
       add_filename_language (".S", language_asm);

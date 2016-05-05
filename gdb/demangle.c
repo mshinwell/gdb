@@ -53,7 +53,7 @@ show_demangle (struct ui_file *file, int from_tty,
 	       struct cmd_list_element *c, const char *value)
 {
   fprintf_filtered (file,
-		    _("Demangling of encoded C++/ObjC names "
+		    _("Demangling of encoded C++/ObjC/OCaml names "
 		      "when displaying symbols is %s.\n"),
 		    value);
 }
@@ -66,7 +66,7 @@ show_asm_demangle (struct ui_file *file, int from_tty,
 		   struct cmd_list_element *c, const char *value)
 {
   fprintf_filtered (file,
-		    _("Demangling of C++/ObjC names in "
+		    _("Demangling of C++/ObjC/OCaml names in "
 		      "disassembly listings is %s.\n"),
 		    value);
 }
@@ -254,15 +254,15 @@ _initialize_demangler (void)
     }
 
   add_setshow_boolean_cmd ("demangle", class_support, &demangle, _("\
-Set demangling of encoded C++/ObjC names when displaying symbols."), _("\
-Show demangling of encoded C++/ObjC names when displaying symbols."), NULL,
+Set demangling of encoded C++/ObjC/OCaml names when displaying symbols."), _("\
+Show demangling of encoded C++/ObjC/OCaml names when displaying symbols."), NULL,
 			   NULL,
 			   show_demangle,
 			   &setprintlist, &showprintlist);
 
   add_setshow_boolean_cmd ("asm-demangle", class_support, &asm_demangle, _("\
-Set demangling of C++/ObjC names in disassembly listings."), _("\
-Show demangling of C++/ObjC names in disassembly listings."), NULL,
+Set demangling of C++/ObjC/OCaml names in disassembly listings."), _("\
+Show demangling of C++/ObjC/OCaml names in disassembly listings."), NULL,
 			   NULL,
 			   show_asm_demangle,
 			   &setprintlist, &showprintlist);

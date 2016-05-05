@@ -500,6 +500,7 @@ binop_promote (const struct language_defn *language, struct gdbarch *gdbarch,
 	case language_asm:
 	case language_objc:
 	case language_opencl:
+	case language_ocaml:
 	  /* No promotion required.  */
 	  break;
 
@@ -568,6 +569,7 @@ binop_promote (const struct language_defn *language, struct gdbarch *gdbarch,
 	case language_cplus:
 	case language_asm:
 	case language_objc:
+	case language_ocaml:
 	  if (result_len <= TYPE_LENGTH (builtin->builtin_int))
 	    {
 	      promoted_type = (unsigned_operation

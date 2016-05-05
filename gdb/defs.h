@@ -180,6 +180,7 @@ enum language
     language_pascal,		/* Pascal */
     language_ada,		/* Ada */
     language_opencl,		/* OpenCL */
+    language_ocaml,             /* OCaml */
     language_minimal,		/* All other languages, minimal support only */
     nr_languages
   };

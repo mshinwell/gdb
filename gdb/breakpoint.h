@@ -1629,4 +1629,6 @@ extern char *ep_parse_optional_if_clause (char **arg);
    UIOUT iff debugging multiple threads.  */
 extern void maybe_print_thread_hit_breakpoint (struct ui_out *uiout);
 
+extern int get_internal_breakpoint_number (void);
+
 #endif /* !defined (BREAKPOINT_H) */
