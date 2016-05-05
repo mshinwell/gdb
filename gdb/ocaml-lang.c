@@ -79,7 +79,7 @@ initialise_debugger_support_library (struct gdb_ocaml_support *stubs)
       return NULL;
     }
 
-  support_init = dlsym (handle, "gdb_ocaml_support_init");
+  support_init = dlsym (handle, "ocaml_debugger_support_init");
   if (support_init == NULL)
     {
       fprintf (stderr, 
