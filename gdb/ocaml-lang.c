@@ -166,7 +166,7 @@ ocaml_demangle (const char* mangled, int options)
     {
       return (stubs->demangle (mangled, options));
     }
-  return strdup(mangled);
+  return xstrdup(mangled);
 }
 
 static void
