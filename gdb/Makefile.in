@@ -1128,7 +1128,7 @@ generated_files = config.h observer.h observer.inc ada-lex.c jit-reader.h \
 	$(COMPILE) $<
 	$(POSTCOMPILE)
 
-all: gdb$(EXEEXT) $(CONFIG_ALL) ocaml-support
+all: gdb$(EXEEXT) $(CONFIG_ALL)
 	@$(MAKE) $(FLAGS_TO_PASS) DO=all "DODIRS=`echo $(SUBDIRS) | sed 's/testsuite//'`" subdir_do
 
 installcheck:
@@ -2717,9 +2717,6 @@ py-varobj.o: $(srcdir)/python/py-varobj.c
 	$(COMPILE) $(PYTHON_CFLAGS) $(srcdir)/python/py-varobj.c
 	$(POSTCOMPILE)
 
-.PHONY: ocaml-support
-ocaml-support:
-	$(MAKE) -C ocaml-support
 #
 # Dependency tracking.  Most of this is conditional on GNU Make being
 # found by configure; if GNU Make is not found, we fall back to a

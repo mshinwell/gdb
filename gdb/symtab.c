@@ -6043,7 +6043,7 @@ find_main_name (void)
   new_main_name = ocaml_main_name ();
   if (new_main_name != NULL)
     {
-      set_main_name (new_main_name);
+      set_main_name (new_main_name, language_ocaml);
       return;
     }
 

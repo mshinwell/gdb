@@ -19,7 +19,6 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "defs.h"
-#include "gdb_string.h"
 #include "gdbtypes.h"
 #include "symtab.h"
 #include "expression.h"
@@ -29,7 +28,6 @@
 #include "c-lang.h"
 #include "gdb_assert.h"
 #include "ocaml-lang.h"
-#include "ocaml-support.h"
 #include "target.h"
 #include "valprint.h"
 #include "breakpoint.h"
@@ -41,29 +39,23 @@
 #include <stdio.h>
 #include <dlfcn.h>
 
-
 extern const struct exp_descriptor exp_descriptor_c;
 extern void inferior_created (struct target_ops *objfile, int from_tty);
+extern initialize_file_ftype _initialize_ocaml_language;
+extern int readnow_symbol_files;
 
 const char* OCAML_MAIN = "caml_program";
 
+static unsigned int value_printer_max_depth = 10;
+
 struct gdb_ocaml_support {
-  void (*val_print) (struct type *type, struct symbol *symbol,
-                     const gdb_byte *valaddr,
-                     int embedded_offset,
-                     CORE_ADDR address, struct ui_file *stream,
-                     int recurse, const struct value *val,
-                     const struct value_print_options *options,
-                     int depth);
-  char* (*partially_mangle) (const char *name);
+  void (*val_print) (struct type *type, const gdb_byte *valaddr,
+                     int embedded_offset, CORE_ADDR address,
+                     struct ui_file *stream, int recurse,
+                     const struct value *val,
+                     const struct value_print_options *options, int depth);
   char* (*demangle) (const char *name,
                      int options);
-  void (*print_type) (struct type *type, struct ui_file *stream);
-  void (*compile_and_run_expression) (const char *expr_text,
-                                      const char **vars_in_scope_names,
-                                      CORE_ADDR *vars_in_scope_values,
-                                      int num_vars_in_scope,
-                                      struct ui_file *stream);
   void (*set_value_printer_max_depth) (int max_depth);
   void (*set_search_path) (char *search_path);
 };
@@ -108,16 +100,13 @@ initialise_debugger_support_library (struct gdb_ocaml_support *stubs)
 
   SET_STUB (stubs, handle, val_print);
   SET_STUB (stubs, handle, demangle);
-  SET_STUB (stubs, handle, partially_mangle);
-  SET_STUB (stubs, handle, print_type);
-  SET_STUB (stubs, handle, compile_and_run_expression);
   SET_STUB (stubs, handle, set_value_printer_max_depth);
   SET_STUB (stubs, handle, set_search_path);
 
   return handle;
 }
 
-struct gdb_ocaml_support *
+static struct gdb_ocaml_support *
 debugger_support_library (void)
 {
   static int initialized = 0;
@@ -136,80 +125,20 @@ debugger_support_library (void)
     return &stubs;
 }
 
-int
-ocaml_support_val_print (struct type *type, struct symbol *symbol,
-                         const gdb_byte *valaddr,
-                         int embedded_offset,
-                         CORE_ADDR address, struct ui_file *stream,
-                         int recurse, const struct value *val,
-                         const struct value_print_options *options,
-                         int depth)
+static void
+set_value_printer_max_depth (int max_depth)
 {
-  return 0;
-}
-
-char*
-ocaml_support_partially_mangle(const char* name)
-{
-  struct gdb_ocaml_support *stubs = ocaml_support_library ();
-  if (stubs && stubs->val_print)
-    {
-      return (stubs->partially_mangle (name));
-    }
-  return NULL;
-}
-
-char*
-ocaml_support_demangle(const char* mangled, int options)
-{
-  struct gdb_ocaml_support *stubs = ocaml_support_library ();
-  if (stubs && stubs->val_print)
-    {
-      return (stubs->demangle (mangled, options));
-    }
-  return NULL;
-}
-
-void
-ocaml_support_print_type (struct type *type, struct ui_file *stream)
-{
-  struct gdb_ocaml_support *stubs = ocaml_support_library ();
-  if (stubs && stubs->print_type)
-    {
-      return (stubs->print_type (type, stream));
-    }
-}
-
-void
-ocaml_support_compile_and_run_expression (const char *expr_text,
-                                          const char **vars_in_scope_names,
-                                          CORE_ADDR *vars_in_scope_values,
-                                          int num_vars_in_scope,
-                                          struct ui_file *stream)
-{
-  struct gdb_ocaml_support *stubs = ocaml_support_library ();
-  if (stubs && stubs->compile_and_run_expression)
-    {
-      stubs->compile_and_run_expression (expr_text, vars_in_scope_names,
-                                         vars_in_scope_values, num_vars_in_scope,
-                                         stream);
-    }
-}
-
-void
-ocaml_support_set_value_printer_max_depth (int max_depth)
-{
-  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  struct gdb_ocaml_support *stubs = debugger_support_library ();
   if (stubs && stubs->set_value_printer_max_depth)
     {
       return (stubs->set_value_printer_max_depth (max_depth));
     }
 }
 
-void
-ocaml_support_set_search_path (char *search_path)
+static void
+set_search_path (char *search_path)
 {
-  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  struct gdb_ocaml_support *stubs = debugger_support_library ();
   if (stubs && stubs->set_search_path)
     {
       return (stubs->set_search_path (search_path));
@@ -219,10 +148,10 @@ ocaml_support_set_search_path (char *search_path)
 const char*
 ocaml_main_name (void)
 {
-  struct minimal_symbol* msym;
+  struct bound_minimal_symbol bound_minsym;
 
-  msym = lookup_minimal_symbol (OCAML_MAIN, NULL, NULL);
-  if (msym != NULL) {
+  bound_minsym = lookup_minimal_symbol (OCAML_MAIN, NULL, NULL);
+  if (bound_minsym.minsym != NULL) {
     return OCAML_MAIN;
   }
 
@@ -232,52 +161,12 @@ ocaml_main_name (void)
 char*
 ocaml_demangle (const char* mangled, int options)
 {
-  return ocaml_support_demangle (mangled, options);
-}
-
-typedef unsigned long long value;
-#define Is_block(x)  (((x) & 1) == 0)
-#define Tag_val(val) (((unsigned char *) (val)) [-sizeof(value)])
-#define Bp_val(v) ((char *) (v))
-#define String_val(x) ((char *) Bp_val(x))
-
-#define Lazy_tag 246
-#define Closure_tag 247
-#define Object_tag 248
-#define Infix_tag 249
-#define Forward_tag 250
-#define No_scan_tag 251
-#define Abstract_tag 251
-#define String_tag 252
-#define Double_tag 253
-#define Double_array_tag 254
-#define Custom_tag 255
-
-static int
-is_ocaml_type (struct type* type)
-{
-  return (TYPE_NAME (type)
-    && strncmp (TYPE_NAME (type), "__ocaml", 7) == 0);
-}
-
-static void
-ocaml_print_type (struct type *type, const char *varstring, struct ui_file *stream,
-                  int show, int level, const struct type_print_options *flags)
-{
-  if (is_ocaml_type (type)) {
-    ocaml_support_print_type(type, stream);
-  }
-  else {
-    c_print_type(type, varstring, stream, show, level, flags);
-  }
-}
-
-static struct gdbarch_data *ocaml_type_data;
-
-const struct builtin_ocaml_type *
-builtin_ocaml_type (struct gdbarch *gdbarch)
-{
-  return gdbarch_data (gdbarch, ocaml_type_data);
+  struct gdb_ocaml_support *stubs = debugger_support_library ();
+  if (stubs && stubs->val_print)
+    {
+      return (stubs->demangle (mangled, options));
+    }
+  return strdup(mangled);
 }
 
 static void
@@ -287,65 +176,25 @@ ocaml_val_print (struct type *type, const gdb_byte *valaddr,
                  const struct value *val,
                  const struct value_print_options *options)
 {
-  struct gdb_ocaml_support *stubs = ocaml_support_library ();
+  struct gdb_ocaml_support *stubs = debugger_support_library ();
 
   if (stubs && stubs->val_print)
     {
       stubs->val_print (type, valaddr, embedded_offset, address, stream,
-                        recurse, val, options, depth);
+                        recurse, val, options,
+                        value_printer_max_depth);
     }
   else
     {
       c_val_print (type, valaddr, embedded_offset, address, stream, recurse,
                    val, options);
     }
-
-/*
-  struct gdbarch *gdbarch = get_type_arch(type);
-  if (is_ocaml_type (type)) {
-    ocaml_support_val_print (type, valaddr, embedded_offset,
-                             address, stream, recurse, val, options, 0);
-  }
-  else if (builtin_ocaml_type (gdbarch)
-             && type == builtin_ocaml_type (gdbarch)->builtin_record_field) {
-    fprintf(stderr, "printing of a record field\n");
-  }
-*/
 }
-
-enum ocaml_primitive_types {
-  ocaml_primitive_type_int,
-  ocaml_primitive_type_float,
-  ocaml_primitive_type_char,
-  ocaml_primitive_type_bool,
-  ocaml_primitive_type_unit,
-  ocaml_primitive_type_value,
-  ocaml_primitive_type_record_field,
-  nr_ocaml_primitive_types
-};
 
 static void
 ocaml_language_arch_info(struct gdbarch* gdbarch,
                          struct language_arch_info* lai)
 {
-  const struct builtin_ocaml_type *builtin = builtin_ocaml_type (gdbarch);
-
-  lai->string_char_type = builtin->builtin_char;
-
-  lai->primitive_type_vector
-    = GDBARCH_OBSTACK_CALLOC (gdbarch, nr_ocaml_primitive_types + 1, struct type *);
-
-  lai->primitive_type_vector [ocaml_primitive_type_int] = builtin->builtin_int;
-  lai->primitive_type_vector [ocaml_primitive_type_float] = builtin->builtin_float;
-  lai->primitive_type_vector [ocaml_primitive_type_char] = builtin->builtin_char;
-  lai->primitive_type_vector [ocaml_primitive_type_bool] = builtin->builtin_bool;
-  lai->primitive_type_vector [ocaml_primitive_type_unit] = builtin->builtin_unit;
-  lai->primitive_type_vector [ocaml_primitive_type_value] = builtin->builtin_value;
-  lai->primitive_type_vector [ocaml_primitive_type_record_field] =
-    builtin->builtin_record_field;
-
-  lai->bool_type_symbol = "bool";
-  lai->bool_type_default = builtin->builtin_bool;
 }
 
 static char *
@@ -357,28 +206,32 @@ ocaml_word_break_characters (void)
 }
 
 static VEC (char_ptr) *
-ocaml_make_symbol_completion_list (char *text, char *word, enum type_code code)
+ocaml_make_symbol_completion_list (const char *text, const char *word,
+                                   enum type_code code)
 {
-  /* The "." ensures that tab completion works correctly on demanged OCaml symbols. */
+  /* The "." ensures that tab completion works correctly on demanged OCaml
+     symbols. */
+
   return default_make_symbol_completion_list_break_on (text, word, ".", code);
 }
 
 const struct language_defn ocaml_language_defn =
 {
   "ocaml",			/* Language name */
+  "ocaml",
   language_ocaml,
   range_check_off,
   case_sensitive_on,
   array_row_major,
   macro_expansion_c,
   &exp_descriptor_c,
-  c__parse,
+  c_parse,
   c_error,
   null_post_parser,
   c_printchar,			/* Print a character constant */
   c_printstr,			/* Function to print string constant */
   c_emit_char,			/* Print a single char */
-  ocaml_print_type,		/* Print a type using appropriate syntax */
+  c_print_type,		        /* Print a type using appropriate syntax */
   c_print_typedef,		/* Print a typedef using appropriate syntax */
   ocaml_val_print,		/* Print a value using appropriate syntax */
   c_value_print,		/* Print a top-level value */
@@ -401,37 +254,11 @@ const struct language_defn ocaml_language_defn =
   c_get_string,
   NULL,				/* la_get_symbol_name_cmp */
   iterate_over_symbols,
+  NULL,
+  NULL,
+  NULL,
   LANG_MAGIC
 };
-
-static void *
-build_ocaml_types (struct gdbarch *gdbarch)
-{
-  struct builtin_ocaml_type *builtin_ocaml_type
-    = GDBARCH_OBSTACK_ZALLOC (gdbarch, struct builtin_ocaml_type);
-
-  builtin_ocaml_type->builtin_unit
-    = arch_character_type (gdbarch, 63, 1, "unit");
-  builtin_ocaml_type->builtin_char
-    = arch_character_type (gdbarch, 8, 1, "char");
-  builtin_ocaml_type->builtin_bool
-    = arch_boolean_type (gdbarch, 8, 0, "bool");
-  builtin_ocaml_type->builtin_int
-    = arch_integer_type (gdbarch, 63, 0, "int");
-  builtin_ocaml_type->builtin_float64
-    = arch_float_type (gdbarch, 64, "float", NULL);
-  builtin_ocaml_type->builtin_value
-    = arch_integer_type (gdbarch, 64, 0, "value");
-  builtin_ocaml_type->builtin_record_field
-    = arch_character_type (gdbarch, 8, 1, "record_field");
-
-  return builtin_ocaml_type;
-}
-
-extern initialize_file_ftype _initialize_ocaml_language;
-extern int readnow_symbol_files;
-
-static unsigned int value_printer_max_depth = 10;
 
 static void
 show_value_printer_max_depth (struct ui_file *file, int from_tty,
@@ -456,22 +283,7 @@ show_search_path (struct ui_file *file, int from_tty,
 void
 _initialize_ocaml_language (void)
 {
-  struct observer *observer;
-  ocaml_type_data;
-
-  initialise_
-
-  type_data = gdbarch_data_register_post_init (build_ocaml_types);
-
-  /* To work around the lack of support for symbol aliases in ELF,
-     we force reading of full symtabs at the beginning.  This means that
-     setting breakpoints on (e.g.) [B.bar] where b.ml says "let bar = A.foo"
-     with [A] a different compilation unit will work. */
-  readnow_symbol_files = 1;
-
   add_language (&ocaml_language_defn);
-
-  observer = observer_attach_inferior_created (inferior_created);
 
   add_setshow_optional_filename_cmd ("ocaml-search-path", class_support,
 				     &search_path, _("\
@@ -492,6 +304,6 @@ Show the maximum depth to which the OCaml value printer will descend into values
 			    show_value_printer_max_depth,
 			    &setprintlist, &showprintlist);
 
-  ocaml_support_set_value_printer_max_depth (10);
-  ocaml_support_set_search_path (NULL);
+  set_value_printer_max_depth (10);
+  set_search_path (NULL);
 }
