@@ -1014,7 +1014,7 @@ language_lookup_primitive_type_1 (const struct language_arch_info *lai,
 {
   struct type **p;
 
-  for (p = lai->primitive_type_vector; (*p) != NULL; p++)
+  for (p = lai->primitive_type_vector; p != NULL && (*p) != NULL; p++)
     {
       if (strcmp (TYPE_NAME (*p), name) == 0)
 	return p;
