@@ -54,6 +54,8 @@ struct gdb_ocaml_support {
                      struct ui_file *stream, int recurse,
                      const struct value *val,
                      const struct value_print_options *options, int depth);
+  int (*parse) (const char* expr, int length);
+  CORE_ADDR (*evaluate) (const char* expr, int length);
   char* (*demangle) (const char *name,
                      int options);
   void (*set_value_printer_max_depth) (int max_depth);
@@ -103,6 +105,7 @@ initialise_debugger_support_library (struct gdb_ocaml_support *stubs)
   SET_STUB (stubs, handle, demangle);
   SET_STUB (stubs, handle, set_value_printer_max_depth);
   SET_STUB (stubs, handle, set_search_path);
+  SET_STUB (stubs, handle, parse);
 
   return handle;
 }
@@ -227,16 +230,30 @@ static int
 ocaml_parse (struct parser_state* pstate)
 {
   struct stoken stoken;
+  struct gdb_ocaml_support *stubs = debugger_support_library ();
+
   stoken.ptr = lexptr;
   stoken.length = strlen(stoken.ptr);
 
-  write_exp_elt_opcode(pstate, OCAML_EXPRESSION);
-  write_exp_string(pstate, stoken);
-  write_exp_elt_opcode(pstate, OCAML_EXPRESSION);
+  if (stubs && stubs->parse)
+    {
+      /* We need to use the standard parser for things such as the address
+         expression when setting a breakpoint (e.g. "*0x123456"). */
+      if (!stubs->parse (stoken.ptr, stoken.length))
+        {
+          write_exp_elt_opcode(pstate, OCAML_EXPRESSION);
+          write_exp_string(pstate, stoken);
+          write_exp_elt_opcode(pstate, OCAML_EXPRESSION);
+          lexptr += stoken.length;
+          return 0;
+        }
+      else
+        {
+          return c_parse (pstate);
+        }
+    }
 
-  lexptr += strlen(lexptr);
-
-  return 0;
+  return c_parse (pstate);
 }
 
 static struct value *
@@ -257,19 +274,20 @@ evaluate_subexp_ocaml (struct type *expect_type, struct expression *exp,
         length = longest_to_int (exp->elts[pc + 1].longconst);
         (*pos) += 3 + BYTES_TO_EXP_ELEM (length + 1);
         ocaml_expr = &exp->elts[pc + 2].string;
-        if (stubs && stubs->val_print)
+        if (stubs && stubs->evaluate)
           {
             return value_from_longest (
               builtin_ocaml_type (exp->gdbarch)->builtin_value,
-              stubs->evaluate(ocaml_expr, length));
+              (LONGEST) (stubs->evaluate(ocaml_expr, length)));
           }
         break;
       }
 
     default:
-      break;
+      return evaluate_subexp_standard (expect_type, exp, pos, noside);
     }
 
+  /* CR mshinwell: this may be wrong */
   return NULL;
 }
 
