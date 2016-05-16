@@ -972,6 +972,7 @@ operator_length_standard (const struct expression *expr, int endpos,
 				   NSString constant.  */
     case OP_OBJC_SELECTOR:	/* Objective C "@selector" pseudo-op.  */
     case OP_NAME:
+    case OCAML_EXPRESSION:
       oplen = longest_to_int (expr->elts[endpos - 2].longconst);
       oplen = 4 + BYTES_TO_EXP_ELEM (oplen + 1);
       break;

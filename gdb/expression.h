@@ -53,6 +53,7 @@ enum exp_opcode
 
 /* Language specific operators.  */
 #include "ada-operator.def"
+#include "ocaml-operator.def"
 
 #undef OP
 
