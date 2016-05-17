@@ -55,7 +55,8 @@ struct gdb_ocaml_support {
                      const struct value *val,
                      const struct value_print_options *options, int depth);
   int (*parse) (const char* expr, int length);
-  CORE_ADDR (*evaluate) (const char* expr, int length);
+  CORE_ADDR (*evaluate) (const char* expr, int length,
+                         char** type_name_out);
   char* (*demangle) (const char *name,
                      int options);
   void (*set_value_printer_max_depth) (int max_depth);
@@ -276,9 +277,20 @@ evaluate_subexp_ocaml (struct type *expect_type, struct expression *exp,
         ocaml_expr = &exp->elts[pc + 2].string;
         if (stubs && stubs->evaluate)
           {
-            return value_from_longest (
-              builtin_ocaml_type (exp->gdbarch)->builtin_value,
-              (LONGEST) (stubs->evaluate(ocaml_expr, length)));
+            char* type_name;
+            struct type* gdb_type;
+            LONGEST result;
+
+            result =
+              (LONGEST) (stubs->evaluate(ocaml_expr, length, &type_name));
+
+            gdb_type = arch_integer_type (exp->gdbarch,
+                                          sizeof(void*) * 8,
+                                          1, /* unsigned */
+                                          type_name);
+            xfree((void*) type_name);
+
+            return value_from_longest (gdb_type, result);
           }
         break;
       }
@@ -310,6 +322,7 @@ ocaml_language_arch_info (struct gdbarch* gdbarch,
     builtin->builtin_value;
 }
 
+/* CR mshinwell: may not be needed again, delete if so */
 static void *
 build_ocaml_types (struct gdbarch *gdbarch)
 {
