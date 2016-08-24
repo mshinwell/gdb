@@ -14981,6 +14981,10 @@ read_subrange_type (struct die_info *die, struct dwarf2_cu *cu)
       low.data.const_val = 1;
       low_default_is_valid = (cu->header.version >= 4);
       break;
+    case language_ocaml:
+      low.data.const_val = -1;
+      low_default_is_valid = 1;
+      break;
     default:
       low.data.const_val = 0;
       low_default_is_valid = 0;

@@ -318,7 +318,8 @@ valprint_check_validity (struct ui_file *stream,
 
   if (TYPE_CODE (type) != TYPE_CODE_UNION
       && TYPE_CODE (type) != TYPE_CODE_STRUCT
-      && TYPE_CODE (type) != TYPE_CODE_ARRAY)
+      && TYPE_CODE (type) != TYPE_CODE_ARRAY
+      && current_language != language_ocaml)
     {
       if (value_bits_any_optimized_out (val,
 					TARGET_CHAR_BIT * embedded_offset,
