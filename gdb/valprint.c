@@ -319,7 +319,7 @@ valprint_check_validity (struct ui_file *stream,
   if (TYPE_CODE (type) != TYPE_CODE_UNION
       && TYPE_CODE (type) != TYPE_CODE_STRUCT
       && TYPE_CODE (type) != TYPE_CODE_ARRAY
-      && current_language != language_ocaml)
+      && current_language->la_language != language_ocaml)
     {
       if (value_bits_any_optimized_out (val,
 					TARGET_CHAR_BIT * embedded_offset,
@@ -328,7 +328,6 @@ valprint_check_validity (struct ui_file *stream,
 	  val_print_optimized_out (val, stream);
 	  return 0;
 	}
-
       if (value_bits_synthetic_pointer (val, TARGET_CHAR_BIT * embedded_offset,
 					TARGET_CHAR_BIT * TYPE_LENGTH (type)))
 	{

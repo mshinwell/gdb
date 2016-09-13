@@ -14240,6 +14240,7 @@ read_tag_pointer_type (struct die_info *die, struct dwarf2_cu *cu)
   struct attribute *attr_address_class;
   int byte_size, addr_class;
   struct type *target_type;
+	const char *name;
 
   target_type = die_type (die, cu);
 
@@ -14289,6 +14290,10 @@ read_tag_pointer_type (struct die_info *die, struct dwarf2_cu *cu)
     }
 
   TYPE_LENGTH (type) = byte_size;
+
+  name = dwarf2_name (die, cu);
+  TYPE_NAME (type) = name;
+
   return set_die_type (die, type, cu);
 }
 
