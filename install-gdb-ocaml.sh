@@ -15,8 +15,8 @@ EOF
 chmod +x $target_bindir/gdb-ocaml
 
 for header in $(find . -name "*.h"); do
-  dirname=$(dirname "$header")
-  install_dirname=$gdb_install_root/src/$(dirname)
+  dir=$(dirname "$header")
+  install_dirname=$gdb_install_root/src/$dir
   mkdir -p $install_dirname
   cp $header $install_dirname
 done
