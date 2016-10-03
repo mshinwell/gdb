@@ -14,7 +14,7 @@ $gdb_install_root/bin/gdb "\$@"
 EOF
 chmod +x $target_bindir/gdb-ocaml
 
-for header in $(find . -name "*.h"); do
+for header in $(find . -name "*.h" -or -name "*.def"); do
   dir=$(dirname "$header")
   install_dirname=$gdb_install_root/src/$dir
   mkdir -p $install_dirname
