@@ -1,5 +1,5 @@
 /* OCaml language support for GDB, the GNU debugger.
-   Copyright (C) 2013--2015, Jane Street Holding
+   Copyright (C) 2013--2016, Jane Street Group LLC
 
    Contributed by Mark Shinwell <mshinwell@janestreet.com>
 
@@ -47,6 +47,8 @@ extern int readnow_symbol_files;
 const char* OCAML_MAIN = "caml_program";
 
 static unsigned int value_printer_max_depth = 10;
+static unsigned int value_printer_max_string_length = 30;
+static char *search_path = "";
 
 struct gdb_ocaml_support {
   void (*val_print) (struct type *type, const gdb_byte *valaddr,
@@ -60,6 +62,7 @@ struct gdb_ocaml_support {
   char* (*demangle) (const char *name,
                      int options);
   void (*set_value_printer_max_depth) (int max_depth);
+  void (*set_value_printer_max_string_length) (int max_string_length);
   void (*set_search_path) (char *search_path);
 };
 
@@ -105,6 +108,7 @@ initialise_debugger_support_library (struct gdb_ocaml_support *stubs)
   SET_STUB (stubs, handle, evaluate);
   SET_STUB (stubs, handle, demangle);
   SET_STUB (stubs, handle, set_value_printer_max_depth);
+  SET_STUB (stubs, handle, set_value_printer_max_string_length);
   SET_STUB (stubs, handle, set_search_path);
   SET_STUB (stubs, handle, parse);
 
@@ -137,6 +141,16 @@ set_value_printer_max_depth (int max_depth)
   if (stubs && stubs->set_value_printer_max_depth)
     {
       return (stubs->set_value_printer_max_depth (max_depth));
+    }
+}
+
+static void
+set_value_printer_max_string_length (int max_string_length)
+{
+  struct gdb_ocaml_support *stubs = debugger_support_library ();
+  if (stubs && stubs->set_value_printer_max_string_length)
+    {
+      return (stubs->set_value_printer_max_string_length (max_string_length));
     }
 }
 
@@ -399,8 +413,6 @@ show_value_printer_max_depth (struct ui_file *file, int from_tty,
 		    value);
 }
 
-static char *search_path = NULL;
-
 static void
 show_search_path (struct ui_file *file, int from_tty,
                   struct cmd_list_element *c, const char *value)
@@ -408,6 +420,16 @@ show_search_path (struct ui_file *file, int from_tty,
   fprintf_filtered (file, _("The search path for loading OCaml "
 			    ".cmi and .cmt files is %s.\n"),
 		    value);
+}
+
+static void
+show_value_printer_max_string_length (struct ui_file *file, int from_tty,
+																			struct cmd_list_element *c,
+																			const char *value)
+{
+  fprintf_filtered (file, _("The maximum number of characters to be printed "
+														"from OCaml strings is %s.\n"),
+										value);
 }
 
 void
@@ -427,14 +449,24 @@ Show the search path for loading OCaml .cmi and .cmt files."),
 				     &setlist, &showlist);
 
   add_setshow_uinteger_cmd ("ocaml-value-printer-max-depth", no_class,
-			    &value_printer_max_depth, _("\
+														&value_printer_max_depth, _("\
 Set the maximum depth to which the OCaml value printer will descend into values."), _("\
 Show the maximum depth to which the OCaml value printer will descend into values."),
                             _(""),
+														NULL,
+														show_value_printer_max_depth,
+														&setprintlist, &showprintlist);
+
+  add_setshow_uinteger_cmd ("ocaml-value-printer-max-string-length", no_class,
+			    &value_printer_max_string_length, _("\
+Set the maximum number of characters to be printed from OCaml strings."), _("\
+Show the maximum number of characters to be printed from OCaml strings."),
+                            _(""),
 			    NULL,
-			    show_value_printer_max_depth,
+			    show_value_printer_max_string_length,
 			    &setprintlist, &showprintlist);
 
-  set_value_printer_max_depth (10);
+  set_value_printer_max_depth (value_printer_max_depth);
+  set_value_printer_max_string_length (value_printer_max_string_length);
   set_search_path (NULL);
 }
