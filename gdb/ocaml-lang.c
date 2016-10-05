@@ -55,7 +55,8 @@ struct gdb_ocaml_support {
                      int embedded_offset, CORE_ADDR address,
                      struct ui_file *stream, int recurse,
                      const struct value *val,
-                     const struct value_print_options *options, int depth);
+                     const struct value_print_options *options, int depth,
+										 int max_string_length);
   int (*parse) (const char* expr, int length);
   CORE_ADDR (*evaluate) (const char* expr, int length,
                          char** type_name_out);
@@ -214,7 +215,8 @@ ocaml_val_print (struct type *type, const gdb_byte *valaddr,
     {
       stubs->val_print (type, valaddr, embedded_offset, address, stream,
                         recurse, val, options,
-                        value_printer_max_depth);
+                        value_printer_max_depth,
+												value_printer_max_string_length);
     }
   else
     {
@@ -448,7 +450,7 @@ Show the search path for loading OCaml .cmi and .cmt files."),
 				     show_search_path,
 				     &setlist, &showlist);
 
-  add_setshow_uinteger_cmd ("ocaml-value-printer-max-depth", no_class,
+  add_setshow_uinteger_cmd ("ocaml-max-depth", no_class,
 														&value_printer_max_depth, _("\
 Set the maximum depth to which the OCaml value printer will descend into values."), _("\
 Show the maximum depth to which the OCaml value printer will descend into values."),
@@ -457,7 +459,7 @@ Show the maximum depth to which the OCaml value printer will descend into values
 														show_value_printer_max_depth,
 														&setprintlist, &showprintlist);
 
-  add_setshow_uinteger_cmd ("ocaml-value-printer-max-string-length", no_class,
+  add_setshow_uinteger_cmd ("ocaml-max-string-length", no_class,
 			    &value_printer_max_string_length, _("\
 Set the maximum number of characters to be printed from OCaml strings."), _("\
 Show the maximum number of characters to be printed from OCaml strings."),
