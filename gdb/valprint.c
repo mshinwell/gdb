@@ -1082,7 +1082,8 @@ common_val_print (struct value *val, struct ui_file *stream, int recurse,
 		  const struct value_print_options *options,
 		  const struct language_defn *language)
 {
-  if (!value_check_printable (val, stream, options))
+  if (!options->ocaml_only_print_short_type
+      && !value_check_printable (val, stream, options))
     return;
 
   if (language->la_language == language_ada)

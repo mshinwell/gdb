@@ -56,7 +56,8 @@ struct gdb_ocaml_support {
                      struct ui_file *stream, int recurse,
                      const struct value *val,
                      const struct value_print_options *options, int depth,
-										 int max_string_length);
+										 int max_string_length, int only_print_short_type,
+										 int only_print_short_value);
   int (*parse) (const char* expr, int length);
   CORE_ADDR (*evaluate) (const char* expr, int length,
                          char** type_name_out);
@@ -216,7 +217,9 @@ ocaml_val_print (struct type *type, const gdb_byte *valaddr,
       stubs->val_print (type, valaddr, embedded_offset, address, stream,
                         recurse, val, options,
                         value_printer_max_depth,
-												value_printer_max_string_length);
+												value_printer_max_string_length,
+												options->ocaml_only_print_short_type,
+												options->ocaml_only_print_short_value);
     }
   else
     {

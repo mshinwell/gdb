@@ -492,6 +492,7 @@ list_arg_or_local (const struct frame_arg *arg, enum what_to_list what,
   struct cleanup *old_chain;
   struct ui_out *uiout = current_uiout;
   struct ui_file *stb;
+  const struct language_defn *language;
 
   gdb_assert (!arg->val || !arg->error);
   gdb_assert ((values == PRINT_NO_VALUES && arg->val == NULL
@@ -520,7 +521,30 @@ list_arg_or_local (const struct frame_arg *arg, enum what_to_list what,
   if (values != PRINT_NO_VALUES || what == all)
     make_cleanup_ui_out_tuple_begin_end (uiout, NULL);
 
-  fputs_filtered (SYMBOL_PRINT_NAME (arg->sym), stb);
+  language = language_def (SYMBOL_LANGUAGE (arg->sym));
+
+  if (language->la_language != language_ocaml)
+    fputs_filtered (SYMBOL_PRINT_NAME (arg->sym), stb);
+  else
+    {
+      char *name = xstrdup (SYMBOL_PRINT_NAME (arg->sym));
+      char *bracket;
+      char *slash;
+
+      bracket = strrchr (name, '[');
+      slash = strrchr (name, '/');
+      if (bracket && slash && bracket < slash)
+	{
+	  *bracket = '\0';
+	  fputs_filtered (name, stb);
+	  fputs_filtered ("[", stb);
+	  fputs_filtered (++slash, stb);
+	}
+      else
+	fputs_filtered (name, stb);
+
+      xfree (name);
+    }
   if (arg->entry_kind == print_entry_values_only)
     fputs_filtered ("@entry", stb);
   ui_out_field_stream (uiout, "name", stb);
@@ -531,7 +555,16 @@ list_arg_or_local (const struct frame_arg *arg, enum what_to_list what,
   if (values == PRINT_SIMPLE_VALUES)
     {
       check_typedef (arg->sym->type);
-      type_print (arg->sym->type, "", stb, -1);
+      if (language->la_language != language_ocaml)
+	type_print (arg->sym->type, "", stb, -1);
+      else
+	{
+	  struct value_print_options opts;
+	  opts.ocaml_only_print_short_type = 1;
+	  opts.ocaml_only_print_short_value = 0;
+	  common_val_print (arg->val, stb, 0, &opts, language);
+	}
+
       ui_out_field_stream (uiout, "type", stb);
     }
 
@@ -549,8 +582,12 @@ list_arg_or_local (const struct frame_arg *arg, enum what_to_list what,
 
 	      get_no_prettyformat_print_options (&opts);
 	      opts.deref_ref = 1;
-	      common_val_print (arg->val, stb, 0, &opts,
-				language_def (SYMBOL_LANGUAGE (arg->sym)));
+	      if (language->la_language == language_ocaml)
+		{
+		  opts.ocaml_only_print_short_type = 0;
+		  opts.ocaml_only_print_short_value = 1;
+		}
+	      common_val_print (arg->val, stb, 0, &opts, language);
 	    }
 	  CATCH (except, RETURN_MASK_ERROR)
 	    {

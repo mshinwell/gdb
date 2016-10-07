@@ -92,6 +92,14 @@ struct value_print_options
   /* If nonzero, when printing a pointer, print the symbol to which it
      points, if any.  */
   int symbol_print;
+
+	/* For the OCaml language only: suppresses printing of the actual value
+		 and instead just prints its type in a highly compact form. */
+	int ocaml_only_print_short_type;
+
+	/* For the OCaml language only: suppresses printing of the type of the
+		 value and prints the value in a highly compact form. */
+	int ocaml_only_print_short_value;
 };
 
 /* The global print options set by the user.  In general this should
