@@ -56,8 +56,8 @@ struct gdb_ocaml_support {
                      struct ui_file *stream, int recurse,
                      const struct value *val,
                      const struct value_print_options *options, int depth,
-										 int max_string_length, int only_print_short_type,
-										 int only_print_short_value);
+                     int max_string_length, int only_print_short_type,
+                     int only_print_short_value);
   int (*parse) (const char* expr, int length);
   CORE_ADDR (*evaluate) (const char* expr, int length,
                          char** type_name_out);
