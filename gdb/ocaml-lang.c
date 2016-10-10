@@ -46,7 +46,7 @@ extern int readnow_symbol_files;
 
 const char* OCAML_MAIN = "caml_program";
 
-static unsigned int value_printer_max_depth = 10;
+static unsigned int value_printer_max_depth = 1;
 static unsigned int value_printer_max_string_length = 30;
 static char *search_path = "";
 
@@ -217,9 +217,9 @@ ocaml_val_print (struct type *type, const gdb_byte *valaddr,
       stubs->val_print (type, valaddr, embedded_offset, address, stream,
                         recurse, val, options,
                         value_printer_max_depth,
-												value_printer_max_string_length,
-												options->ocaml_only_print_short_type,
-												options->ocaml_only_print_short_value);
+			value_printer_max_string_length,
+			options->ocaml_only_print_short_type,
+			options->ocaml_only_print_short_value);
     }
   else
     {
