@@ -527,23 +527,51 @@ list_arg_or_local (const struct frame_arg *arg, enum what_to_list what,
     fputs_filtered (SYMBOL_PRINT_NAME (arg->sym), stb);
   else
     {
+      /* CR mshinwell: This is fragile and needs to be fixed properly. */
+
       char *name = xstrdup (SYMBOL_PRINT_NAME (arg->sym));
       char *bracket;
       char *slash;
+      char *semi;
+      char *name_saved;
 
+      name_saved = name;
       bracket = strrchr (name, '[');
-      slash = strrchr (name, '/');
-      if (bracket && slash && bracket < slash)
+
+      if (!bracket)
+	fputs_filtered (name, stb);
+      else
 	{
 	  *bracket = '\0';
 	  fputs_filtered (name, stb);
 	  fputs_filtered ("[", stb);
-	  fputs_filtered (++slash, stb);
-	}
-      else
-	fputs_filtered (name, stb);
 
-      xfree (name);
+	  name = ++bracket;
+
+	  do {
+	    semi = strchr (name, ';');
+	    if (semi)
+	      *semi = '\0';
+
+	    slash = strrchr (name, '/');
+	    if (slash)
+	      {
+		fputs_filtered (++slash, stb);
+	      }
+	    else
+	      fputs_filtered (name, stb);
+
+	    if (semi)
+	      {
+		fputs_filtered (";", stb);
+		name = ++semi;
+              }              
+	    else
+	      break;
+	  } while (*name);
+        }
+
+      xfree (name_saved);
     }
   if (arg->entry_kind == print_entry_values_only)
     fputs_filtered ("@entry", stb);
