@@ -71,6 +71,14 @@ cli_style_option address_style (ui_file_style::BLUE);
 
 /* See cli-style.h.  */
 
+cli_style_option type_style (ui_file_style::MAGENTA);
+
+/* See cli-style.h.  */
+
+cli_style_option error_style (ui_file_style::RED);
+
+/* See cli-style.h.  */
+
 cli_style_option::cli_style_option (ui_file_style::basic_color fg)
   : m_foreground (cli_colors[fg - ui_file_style::NONE]),
     m_background (cli_colors[0]),
@@ -281,6 +289,20 @@ Configure variable name colors and display intensity"),
 Address display styling\n\
 Configure address colors and display intensity"),
 				      "style address",
+				      &style_set_list,
+				      &style_show_list);
+  type_style.add_setshow_commands ("type", no_class,
+				      _("\
+Type display styling\n\
+Configure type colors and display intensity"),
+				      "style type",
+				      &style_set_list,
+				      &style_show_list);
+  error_style.add_setshow_commands ("error", no_class,
+				      _("\
+Value printing error display styling\n\
+Configure value printing error colors and display intensity"),
+				      "style error",
 				      &style_set_list,
 				      &style_show_list);
 }

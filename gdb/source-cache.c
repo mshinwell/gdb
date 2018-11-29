@@ -155,6 +155,9 @@ get_language_name (enum language lang)
     case language_ada:
       return "ada.lang";
 
+    case language_ocaml:
+      return "caml.lang";
+
     default:
       break;
     }

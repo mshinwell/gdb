@@ -39,6 +39,7 @@
 #include "ada-lang.h"
 #include "go-lang.h"
 #include "p-lang.h"
+#include "ocaml-lang.h"
 #include "addrmap.h"
 #include "cli/cli-utils.h"
 #include "fnmatch.h"
@@ -655,6 +656,7 @@ symbol_set_language (struct general_symbol_info *gsymbol,
       || gsymbol->language == language_d
       || gsymbol->language == language_go
       || gsymbol->language == language_objc
+      || gsymbol->language == language_ocaml
       || gsymbol->language == language_fortran)
     {
       symbol_set_demangled_name (gsymbol, NULL, obstack);
@@ -753,6 +755,16 @@ symbol_find_demangled_name (struct general_symbol_info *gsymbol,
       if (language_sniff_from_mangled_name (lang, mangled, &demangled))
 	{
 	  gsymbol->language = l;
+	  return demangled;
+	}
+    }
+  if (gsymbol->language == language_ocaml
+      || gsymbol->language == language_auto)
+    {
+      demangled = ocaml_demangle (mangled, 0);
+      if (demangled != NULL)
+	{
+	  gsymbol->language = language_ocaml;
 	  return demangled;
 	}
     }
@@ -897,6 +909,7 @@ symbol_natural_name (const struct general_symbol_info *gsymbol)
     case language_cplus:
     case language_d:
     case language_go:
+    case language_ocaml:
     case language_objc:
     case language_fortran:
       if (symbol_get_demangled_name (gsymbol) != NULL)
@@ -924,6 +937,7 @@ symbol_demangled_name (const struct general_symbol_info *gsymbol)
     case language_d:
     case language_go:
     case language_objc:
+    case language_ocaml:
     case language_fortran:
       dem_name = symbol_get_demangled_name (gsymbol);
       break;
@@ -5736,6 +5750,13 @@ find_main_name (void)
   if (new_main_name != NULL)
     {
       set_main_name (new_main_name, language_d);
+      return;
+    }
+
+  new_main_name = ocaml_main_name ();
+  if (new_main_name != NULL)
+    {
+      set_main_name (new_main_name, language_ocaml);
       return;
     }
 

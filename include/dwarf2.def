@@ -467,6 +467,12 @@ DW_TAG (DW_AT_GNU_denominator, 0x2304)
 /* Biased integer extension.
    See https://gcc.gnu.org/wiki/DW_AT_GNU_bias .  */
 DW_TAG (DW_AT_GNU_bias, 0x2305)
+/* OCaml extensions. */
+DW_AT (DW_AT_ocaml_compiler_version, 0x3100)
+DW_AT (DW_AT_ocaml_unit_name, 0x3101)
+DW_AT (DW_AT_ocaml_config_digest, 0x3102)
+DW_AT (DW_AT_ocaml_prefix_name, 0x3103)
+DW_AT (DW_AT_ocaml_linker_dirs, 0x3104)
 /* UPC extension.  */
 DW_AT (DW_AT_upc_threads_scaled, 0x3210)
 /* PGI (STMicroelectronics) extensions.  */

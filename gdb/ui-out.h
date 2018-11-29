@@ -68,6 +68,8 @@ enum ui_out_type
 
 /* Possible kinds of styling.  */
 
+#undef VARIABLE
+
 enum class ui_out_style_kind
 {
   /* The default (plain) style.  */

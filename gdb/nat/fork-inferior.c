@@ -508,7 +508,8 @@ startup_inferior (pid_t pid, int ntraps,
 	  case TARGET_WAITKIND_SIGNALLED:
 	    target_terminal::ours ();
 	    target_mourn_inferior (event_ptid);
-	    error (_("During startup program terminated with signal %s, %s."),
+	    error (_("During startup program terminated with signal %d=%s, %s."),
+		   (int) ws.value.sig,
 		   gdb_signal_to_name (ws.value.sig),
 		   gdb_signal_to_string (ws.value.sig));
 	    return resume_ptid;

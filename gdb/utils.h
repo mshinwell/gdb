@@ -351,6 +351,15 @@ extern struct ui_file *gdb_stdtargin;
 
 extern void set_screen_width_and_height (int width, int height);
 
+/* Get the number of characters printed thus far on the current line.  */
+extern unsigned int get_chars_printed_on_current_line (void);
+
+/* Get the column number where words are to be wrapped.  Returns zero if
+   wrapping is not currently in effect. */
+extern int get_wrap_column (void);
+
+extern void set_wrap_column (int);
+
 /* More generic printf like operations.  Filtered versions may return
    non-locally on error.  */
 
@@ -438,6 +447,10 @@ extern void fprintf_styled (struct ui_file *stream,
 extern void fputs_styled (const char *linebuffer,
 			  const ui_file_style &style,
 			  struct ui_file *stream);
+
+/* Retrieve the currently-applied style. */
+
+extern ui_file_style get_applied_style (void);
 
 /* Reset the terminal style to the default, if needed.  */
 

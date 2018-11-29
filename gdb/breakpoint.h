@@ -1682,4 +1682,6 @@ extern void print_breakpoint (breakpoint *bp);
 /* Command element for the 'commands' command.  */
 extern cmd_list_element *commands_cmd_element;
 
+extern int get_internal_breakpoint_number (void);
+
 #endif /* !defined (BREAKPOINT_H) */

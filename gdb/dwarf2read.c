@@ -561,6 +561,9 @@ struct dwarf2_cu
 
   bool processing_has_namespace_info : 1;
 
+  /* OCaml-specific compilation unit information. */
+  struct ocaml_compilation_unit_info ocaml;
+
   struct partial_die_info *find_partial_die (sect_offset sect_off);
 };
 
@@ -8003,7 +8006,6 @@ process_psymtab_comp_unit_reader (const struct die_reader_specs *reader,
   pst->dirname = dwarf2_string_attr (comp_unit_die, DW_AT_comp_dir, cu);
 
   baseaddr = ANOFFSET (objfile->section_offsets, SECT_OFF_TEXT (objfile));
-
   dwarf2_find_base_address (comp_unit_die, cu);
 
   /* Possibly set the default values of LOWPC and HIGHPC from
@@ -10809,7 +10811,9 @@ dwarf2_compute_name (const char *name,
      will set the demangled name to the result of dwarf2_full_name, and it is
      the demangled name that GDB uses if it exists.  */
   if (cu->language == language_ada
-      || (cu->language == language_fortran && physname))
+      || (cu->language == language_fortran && physname)
+      /* We need access to the stamped (linkage) names in gdb. */
+      || cu->language == language_ocaml)
     {
       /* For Ada unit, we prefer the linkage name over the name, as
 	 the former contains the exported name, which the user expects
@@ -17007,6 +17011,7 @@ read_tag_pointer_type (struct die_info *die, struct dwarf2_cu *cu)
   struct attribute *attr_address_class;
   int byte_size, addr_class;
   struct type *target_type;
+	const char *name;
 
   target_type = die_type (die, cu);
 
@@ -17804,6 +17809,10 @@ read_subrange_type (struct die_info *die, struct dwarf2_cu *cu)
     case language_pascal:
       low.data.const_val = 1;
       low_default_is_valid = (cu->header.version >= 4);
+      break;
+    case language_ocaml:
+      low.data.const_val = -1;
+      low_default_is_valid = 1;
       break;
     default:
       low.data.const_val = 0;
@@ -19944,6 +19953,9 @@ set_cu_language (unsigned int lang, struct dwarf2_cu *cu)
     case DW_LANG_Rust_old:
       cu->language = language_rust;
       break;
+    case DW_LANG_OCaml:
+      cu->language = language_ocaml;
+      break;
     case DW_LANG_Cobol74:
     case DW_LANG_Cobol85:
     default:
@@ -21267,6 +21279,11 @@ dwarf2_start_symtab (struct dwarf2_cu *cu,
 		      name, comp_dir, cu->language, low_pc));
 
   cu->list_in_scope = cu->builder->get_file_symbols ();
+
+  cu->builder->record_ocaml_compiler_version (cu->ocaml.compiler_version);
+  cu->builder->record_ocaml_unit_name (cu->ocaml.unit_name);
+  cu->builder->record_ocaml_config_digest (cu->ocaml.config_digest);
+  cu->builder->record_ocaml_prefix_name (cu->ocaml.prefix_name);
 
   cu->builder->record_debugformat ("DWARF 2");
   cu->builder->record_producer (cu->producer);
@@ -24936,6 +24953,8 @@ fill_in_loclist_baton (struct dwarf2_cu *cu,
 
   dwarf2_read_section (dwarf2_per_objfile->objfile, section);
 
+  dwarf2_find_base_address (cu->per_cu->cu->dies, cu->per_cu->cu);
+
   baton->per_cu = cu->per_cu;
   gdb_assert (baton->per_cu);
   /* We don't know how long the location list is, but make sure we
@@ -25163,6 +25182,9 @@ dwarf2_find_containing_comp_unit (sect_offset sect_off,
 
 /* Initialize dwarf2_cu CU, owned by PER_CU.  */
 
+static ocaml_compilation_unit_info no_ocaml_compilation_unit_info =
+  { NULL, NULL, NULL, NULL, NULL };
+
 dwarf2_cu::dwarf2_cu (struct dwarf2_per_cu_data *per_cu_)
   : per_cu (per_cu_),
     mark (false),
@@ -25173,7 +25195,8 @@ dwarf2_cu::dwarf2_cu (struct dwarf2_per_cu_data *per_cu_)
     producer_is_icc (false),
     producer_is_icc_lt_14 (false),
     producer_is_codewarrior (false),
-    processing_has_namespace_info (false)
+    processing_has_namespace_info (false),
+    ocaml (no_ocaml_compilation_unit_info)
 {
   per_cu->cu = this;
 }
@@ -25183,6 +25206,28 @@ dwarf2_cu::dwarf2_cu (struct dwarf2_per_cu_data *per_cu_)
 dwarf2_cu::~dwarf2_cu ()
 {
   per_cu->cu = NULL;
+}
+
+/* Initialize OCaml-specific fields of a compilation unit from OCaml-specific
+   DWARF attributes. */
+static void
+read_ocaml_specific_comp_unit_info (struct dwarf2_cu *cu,
+				    struct die_info *comp_unit_die)
+{
+  cu->ocaml.compiler_version =
+    dwarf2_string_attr (comp_unit_die, DW_AT_ocaml_compiler_version, cu);
+
+  cu->ocaml.unit_name =
+    dwarf2_string_attr (comp_unit_die, DW_AT_ocaml_unit_name, cu);
+
+  cu->ocaml.config_digest =
+    dwarf2_string_attr (comp_unit_die, DW_AT_ocaml_config_digest, cu);
+
+  cu->ocaml.prefix_name =
+    dwarf2_string_attr (comp_unit_die, DW_AT_ocaml_prefix_name, cu);
+
+  cu->ocaml.linker_dirs =
+    dwarf2_string_attr (comp_unit_die, DW_AT_ocaml_linker_dirs, cu);
 }
 
 /* Initialize basic fields of dwarf_cu CU according to DIE COMP_UNIT_DIE.  */
@@ -25204,6 +25249,11 @@ prepare_one_comp_unit (struct dwarf2_cu *cu, struct die_info *comp_unit_die,
     }
 
   cu->producer = dwarf2_string_attr (comp_unit_die, DW_AT_producer, cu);
+
+  if (cu->language == language_ocaml)
+    {
+      read_ocaml_specific_comp_unit_info (cu, comp_unit_die);
+    }
 }
 
 /* Increase the age counter on each cached compilation unit, and free

@@ -89,6 +89,13 @@ extern cli_style_option variable_name_style;
 /* The address style.  */
 extern cli_style_option address_style;
 
+/* The type style.  */
+extern cli_style_option type_style;
+
+/* The error style (for parts of values that cannot be printed due to
+   missing type information, or similar).  */
+extern cli_style_option error_style;
+
 /* True if styling is enabled.  */
 extern int cli_styling;
 

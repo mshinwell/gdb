@@ -253,7 +253,10 @@ print_frame_arg (const struct frame_arg *arg)
 			       SYMBOL_LANGUAGE (arg->sym),
 			       DMGL_PARAMS | DMGL_ANSI);
     }
-  if (arg->entry_kind == print_entry_values_only
+
+  if ((arg->entry_kind == print_entry_values_only
+        && (print_entry_values == print_entry_values_if_needed
+	      && SYMBOL_LANGUAGE(arg->sym) != language_ocaml))
       || arg->entry_kind == print_entry_values_compact)
     stb.puts ("@entry");
   uiout->field_stream ("name", stb, ui_out_style_kind::VARIABLE);

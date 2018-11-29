@@ -264,6 +264,31 @@ struct buildsym_compunit
     m_producer = producer;
   }
 
+  void record_ocaml_compiler_version (const char *compiler_version)
+  {
+    m_ocaml_compiler_version = compiler_version;
+  }
+
+  void record_ocaml_unit_name (const char *unit_name)
+  {
+    m_ocaml_unit_name = unit_name;
+  }
+
+  void record_ocaml_config_digest (const char *config_digest)
+  {
+    m_ocaml_config_digest = config_digest;
+  }
+
+  void record_ocaml_prefix_name (const char *prefix_name)
+  {
+    m_ocaml_prefix_name = prefix_name;
+  }
+
+  void record_ocaml_linker_dirs (const char *linker_dirs)
+  {
+    m_ocaml_linker_dirs = linker_dirs;
+  }
+
   struct context_stack *push_context (int desc, CORE_ADDR valu);
 
   struct context_stack pop_context ();
@@ -345,6 +370,13 @@ private:
      comes from the N_SO symbol.  For Dwarf it typically comes from the
      DW_AT_low_pc attribute of a DW_TAG_compile_unit DIE.  */
   CORE_ADDR m_last_source_start_addr;
+
+  /* OCaml-specific compilation unit information. */
+  const char *m_ocaml_compiler_version;
+  const char *m_ocaml_unit_name;
+  const char *m_ocaml_config_digest;
+  const char *m_ocaml_prefix_name;
+  const char *m_ocaml_linker_dirs;
 
   /* Stack of subfile names.  */
   std::vector<const char *> m_subfile_stack;

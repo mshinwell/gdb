@@ -328,6 +328,11 @@ dwarf2_find_location_expression (struct dwarf2_loclist_baton *baton,
 	  gdb_assert_not_reached ("bad debug_loc_kind");
 	}
 
+      /*
+      fprintf(stderr,"LOCATION LIST RANGE without B.A. %p -> %p\n",(void*)low,(void*)high);
+      fprintf(stderr,"B.A. is %p\n",(void*)base_address);
+      */
+
       /* Otherwise, a location expression entry.
 	 If the entry is from a DWO, don't add base address: the entry is from
 	 .debug_addr which already has the DWARF "base address".  We still add
@@ -356,6 +361,10 @@ dwarf2_find_location_expression (struct dwarf2_loclist_baton *baton,
 	  loc_ptr += bytes_read;
 	}
 
+      /*
+      fprintf(stderr,"LOCATION LIST RANGE %p -> %p\n",(void*)low,(void*)high);
+      */
+
       if (low == high && pc == low)
 	{
 	  /* This is entry PC record present only at entry point
@@ -377,6 +386,9 @@ dwarf2_find_location_expression (struct dwarf2_loclist_baton *baton,
       if (pc >= low && pc < high)
 	{
 	  *locexpr_length = length;
+    /*
+	  fprintf(stderr,"FOUND MATCHING PC %p\n",(void*)pc);
+    */
 	  return loc_ptr;
 	}
 

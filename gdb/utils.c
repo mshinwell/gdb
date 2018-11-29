@@ -1257,6 +1257,12 @@ show_chars_per_line (struct ui_file *file, int from_tty,
 /* Current count of lines printed on this page, chars on this line.  */
 static unsigned int lines_printed, chars_printed;
 
+unsigned int
+get_chars_printed_on_current_line (void)
+{
+  return chars_printed;
+}
+
 /* True if pagination is disabled for just one command.  */
 
 static bool pagination_disabled_for_command;
@@ -1282,6 +1288,18 @@ static const char *wrap_indent;
 /* Column number on the screen where wrap_buffer begins, or 0 if wrapping
    is not in effect.  */
 static int wrap_column;
+
+int
+get_wrap_column (void)
+{
+  return wrap_column;
+}
+
+void
+set_wrap_column (int col)
+{
+  wrap_column = col;
+}
 
 
 /* Initialize the number of lines per page and chars per line.  */
@@ -1431,6 +1449,14 @@ static ui_file_style applied_style;
    style when showing the pagination prompt.  */
 
 static ui_file_style desired_style;
+
+/* Retrieve the currently-applied style. */
+
+ui_file_style
+get_applied_style (void)
+{
+  return applied_style;
+}
 
 /* Emit an ANSI style escape for STYLE to the wrap buffer.  */
 
@@ -1757,8 +1783,12 @@ fputs_maybe_filtered (const char *linebuffer, struct ui_file *stream,
 	  && !pagination_disabled_for_command)
 	prompt_for_continue ();
 
+      const char *ok_to_wrap_again = NULL;
+      char last_char;
+
       while (*lineptr && *lineptr != '\n')
 	{
+	  last_char = *lineptr;
 	  /* Print a single line.  */
 	  if (*lineptr == '\t')
 	    {
@@ -1769,6 +1799,18 @@ fputs_maybe_filtered (const char *linebuffer, struct ui_file *stream,
 	      chars_printed = ((chars_printed >> 3) + 1) << 3;
 	      lineptr++;
 	    }
+	  else if (*lineptr == '\033')
+	    {
+	      int seq_len = 0;
+	      /* HACK: For now assume the whole sequence is in the buffer. */
+	      if (skip_ansi_escape (lineptr, &seq_len))
+	        {
+                  ok_to_wrap_again = lineptr + seq_len;
+	        }
+	      wrap_buffer.push_back (*lineptr);
+	      chars_printed++;
+	      lineptr++;
+	    }
 	  else
 	    {
 	      wrap_buffer.push_back (*lineptr);
@@ -1776,9 +1818,16 @@ fputs_maybe_filtered (const char *linebuffer, struct ui_file *stream,
 	      lineptr++;
 	    }
 
-	  if (chars_printed >= chars_per_line)
+	  if (wrap_column != 0
+	        && chars_printed >= chars_per_line
+	        && (last_char == ' ' || last_char == ','
+		    || last_char == ')')
+	        && (ok_to_wrap_again == NULL
+		  || lineptr >= ok_to_wrap_again))
 	    {
 	      unsigned int save_chars = chars_printed;
+
+	      ok_to_wrap_again = NULL;
 
 	      chars_printed = 0;
 	      lines_printed++;

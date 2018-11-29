@@ -1358,6 +1358,33 @@ struct symtab
 #define SYMTAB_DIRNAME(symtab) \
   COMPUNIT_DIRNAME (SYMTAB_COMPUNIT (symtab))
 
+/* The OCaml compiler emits extra DWARF attributes to describe
+   language-specific properties of a compilation unit. */
+
+struct ocaml_compilation_unit_info
+{
+  /* The version string of the OCaml compiler. */
+  const char *compiler_version;
+
+  /* The OCaml unit name (e.g. "Printf") of the compilation unit.  This is
+     used for correlation with the DWARF type names of OCaml variables. */
+  const char *unit_name;
+
+  /* The digest of the static configuration values of the OCaml compiler. */
+  const char *config_digest;
+
+  /* The full path (made absolute by the compiler but not canonicalised) and the
+     first portion of the filename component---containing everything except
+     the extension and its separator---for compilation artifacts resulting from
+     compiling the source file.  (The name and path of the source file are
+     specified using [DW_AT_name] and [DW_AT_comp_dir].) */
+  const char *prefix_name;
+
+  /* A mangled form of the set of directories in which .cmx and .cmxa files
+     were found by the OCaml compiler when linking the executable. */
+  const char *linker_dirs;
+};
+
 /* Compunit symtabs contain the actual "symbol table", aka blockvector, as well
    as the list of all source files (what gdb has historically associated with
    the term "symtab").
@@ -1430,6 +1457,9 @@ struct compunit_symtab
 
   /* Directory in which it was compiled, or NULL if we don't know.  */
   const char *dirname;
+
+  /* OCaml-specific compilation unit information. */
+  struct ocaml_compilation_unit_info ocaml;
 
   /* List of all symbol scope blocks for this symtab.  It is shared among
      all symtabs in a given compilation unit.  */

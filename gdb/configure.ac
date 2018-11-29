@@ -1725,6 +1725,9 @@ else
   found="-rdynamic"
   RDYNAMIC="-rdynamic"
 fi
+# CR mshinwell: Work out how to fix this properly
+RDYNAMIC="-rdynamic -Wl,--export-dynamic"
+LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
 AC_SUBST(RDYNAMIC)
 AC_MSG_RESULT($found)
 
