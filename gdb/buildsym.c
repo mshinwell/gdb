@@ -128,6 +128,9 @@ struct buildsym_compunit
 
   /* Language of this compunit_symtab.  */
   enum language language;
+
+  /* OCaml-specific information for the compunit we are building. */
+  struct ocaml_compilation_unit_info ocaml;
 };
 
 /* The work-in-progress of the compunit we are building.
@@ -776,6 +779,11 @@ start_buildsym_compunit (struct objfile *objfile, const char *comp_dir,
   bscu->objfile = objfile;
   bscu->comp_dir = (comp_dir == NULL) ? NULL : xstrdup (comp_dir);
   bscu->language = language;
+
+  bscu->ocaml.compiler_version = NULL;
+  bscu->ocaml.config_digest = NULL;
+  bscu->ocaml.unit_name = NULL;
+  bscu->ocaml.prefix_name = NULL;
 
   /* Initialize the debug format string to NULL.  We may supply it
      later via a call to record_debugformat.  */
@@ -1437,6 +1445,8 @@ end_symtab_with_blockvector (struct block *static_block,
 
   COMPUNIT_MACRO_TABLE (cu) = pending_macros;
 
+  cu->ocaml = buildsym_compunit->ocaml;
+
   /* Default any symbols without a specified symtab to the primary symtab.  */
   {
     int block_i;
@@ -1677,6 +1687,34 @@ void
 record_producer (const char *producer)
 {
   buildsym_compunit->producer = producer;
+}
+
+void
+record_ocaml_compiler_version (const char *version)
+{
+
+  buildsym_compunit->ocaml.compiler_version = version;
+}
+
+void
+record_ocaml_unit_name (const char *unit_name)
+{
+
+  buildsym_compunit->ocaml.unit_name = unit_name;
+}
+
+void
+record_ocaml_config_digest (const char *config_digest)
+{
+
+  buildsym_compunit->ocaml.config_digest = config_digest;
+}
+
+void
+record_ocaml_prefix_name (const char *prefix_name)
+{
+
+  buildsym_compunit->ocaml.prefix_name = prefix_name;
 }
 
 /* Merge the first symbol list SRCLIST into the second symbol list

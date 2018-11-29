@@ -1070,6 +1070,7 @@ COMMON_SFILES = \
 	objc-lang.c \
 	objfiles.c \
 	observable.c \
+	ocaml-lang.c \
 	opencl-lang.c \
 	osabi.c \
 	osdata.c \
@@ -1320,6 +1321,7 @@ HFILES_NO_SRCDIR = \
 	objfiles.h \
 	obsd-nat.h \
 	obsd-tdep.h \
+	ocaml-lang.h \
 	osabi.h \
 	osdata.h \
 	p-lang.h \

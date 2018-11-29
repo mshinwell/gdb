@@ -285,6 +285,13 @@ extern void record_debugformat (const char *format);
 
 extern void record_producer (const char *producer);
 
+/* Functions for recording various OCaml-specific compilation unit
+   information. */
+extern void record_ocaml_compiler_version (const char *);
+extern void record_ocaml_unit_name (const char *);
+extern void record_ocaml_config_digest (const char *);
+extern void record_ocaml_prefix_name (const char *);
+
 extern void merge_symbol_lists (struct pending **srclist,
 				struct pending **targetlist);
 

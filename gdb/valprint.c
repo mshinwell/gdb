@@ -305,7 +305,8 @@ valprint_check_validity (struct ui_file *stream,
 
   if (TYPE_CODE (type) != TYPE_CODE_UNION
       && TYPE_CODE (type) != TYPE_CODE_STRUCT
-      && TYPE_CODE (type) != TYPE_CODE_ARRAY)
+      && TYPE_CODE (type) != TYPE_CODE_ARRAY
+      && current_language->la_language != language_ocaml)
     {
       if (value_bits_any_optimized_out (val,
 					TARGET_CHAR_BIT * embedded_offset,
@@ -1083,7 +1084,10 @@ value_check_printable (struct value *val, struct ui_file *stream,
       return 0;
     }
 
-  if (value_entirely_optimized_out (val))
+  /* Some values in OCaml are uniquely determined by their types, so we
+     can still print them even if the value is unavailable. */
+  if (value_entirely_optimized_out (val)
+      && current_language->la_language != language_ocaml)
     {
       if (options->summary && !val_print_scalar_type_p (value_type (val)))
 	fprintf_filtered (stream, "...");
@@ -1092,7 +1096,8 @@ value_check_printable (struct value *val, struct ui_file *stream,
       return 0;
     }
 
-  if (value_entirely_unavailable (val))
+  if (value_entirely_unavailable (val)
+      && current_language->la_language != language_ocaml)
     {
       if (options->summary && !val_print_scalar_type_p (value_type (val)))
 	fprintf_filtered (stream, "...");
@@ -1134,7 +1139,8 @@ common_val_print (struct value *val, struct ui_file *stream, int recurse,
 		  const struct value_print_options *options,
 		  const struct language_defn *language)
 {
-  if (!value_check_printable (val, stream, options))
+  if (!options->ocaml_only_print_short_type
+      && !value_check_printable (val, stream, options))
     return;
 
   if (language->la_language == language_ada)

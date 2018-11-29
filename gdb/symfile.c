@@ -58,6 +58,7 @@
 #include "cli/cli-utils.h"
 #include "common/byte-vector.h"
 #include "selftest.h"
+#include "ocaml-lang.h"
 
 #include <sys/types.h>
 #include <fcntl.h>
@@ -1621,7 +1622,9 @@ set_initial_language (void)
       char *name = main_name ();
       struct symbol *sym = lookup_symbol (name, NULL, VAR_DOMAIN, NULL).symbol;
 
-      if (sym != NULL)
+      if (!strcmp (name, OCAML_MAIN))
+        lang = language_ocaml;
+      else if (sym != NULL)
 	lang = SYMBOL_LANGUAGE (sym);
     }
 

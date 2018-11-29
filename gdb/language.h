@@ -677,6 +677,7 @@ extern const struct language_defn f_language_defn;
 extern const struct language_defn go_language_defn;
 extern const struct language_defn m2_language_defn;
 extern const struct language_defn objc_language_defn;
+extern const struct language_defn ocaml_language_defn;
 extern const struct language_defn opencl_language_defn;
 extern const struct language_defn pascal_language_defn;
 extern const struct language_defn rust_language_defn;
