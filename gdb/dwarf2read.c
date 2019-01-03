@@ -21284,6 +21284,7 @@ dwarf2_start_symtab (struct dwarf2_cu *cu,
   cu->builder->record_ocaml_unit_name (cu->ocaml.unit_name);
   cu->builder->record_ocaml_config_digest (cu->ocaml.config_digest);
   cu->builder->record_ocaml_prefix_name (cu->ocaml.prefix_name);
+  cu->builder->record_ocaml_linker_dirs (cu->ocaml.linker_dirs);
 
   cu->builder->record_debugformat ("DWARF 2");
   cu->builder->record_producer (cu->producer);
