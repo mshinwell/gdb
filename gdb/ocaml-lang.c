@@ -412,10 +412,15 @@ evaluate_subexp_ocaml (struct type *expect_type, struct expression *exp,
           {
             char* type_name;
             struct type* gdb_type;
-            LONGEST result;
+            CORE_ADDR result;
 
             result =
-              (LONGEST) (stubs->evaluate(ocaml_expr, length, &type_name));
+              (CORE_ADDR) (stubs->evaluate(ocaml_expr, length, &type_name));
+
+	    if (result == (CORE_ADDR) -1)
+	      {
+		error (_("libmonda could not evaluate expression"));
+	      }
 
             gdb_type = arch_integer_type (exp->gdbarch,
                                           sizeof(void*) * 8,
