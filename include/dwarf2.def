@@ -473,6 +473,7 @@ DW_AT (DW_AT_ocaml_unit_name, 0x3101)
 DW_AT (DW_AT_ocaml_config_digest, 0x3102)
 DW_AT (DW_AT_ocaml_prefix_name, 0x3103)
 DW_AT (DW_AT_ocaml_linker_dirs, 0x3104)
+DW_AT (DW_AT_ocaml_cmt_file_digest, 0x3105)
 /* UPC extension.  */
 DW_AT (DW_AT_upc_threads_scaled, 0x3210)
 /* PGI (STMicroelectronics) extensions.  */

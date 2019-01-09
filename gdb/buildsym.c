@@ -72,7 +72,8 @@ buildsym_compunit::buildsym_compunit (struct objfile *objfile_,
     m_ocaml_unit_name (NULL),
     m_ocaml_config_digest (NULL),
     m_ocaml_prefix_name (NULL),
-    m_ocaml_linker_dirs (NULL)
+    m_ocaml_linker_dirs (NULL),
+    m_ocaml_cmt_file_digest (NULL)
 {
   /* Allocate the compunit symtab now.  The caller needs it to allocate
      non-primary symtabs.  It is also needed by get_macro_table.  */
@@ -1066,6 +1067,7 @@ buildsym_compunit::end_symtab_with_blockvector (struct block *static_block,
   cu->ocaml.config_digest = m_ocaml_config_digest;
   cu->ocaml.prefix_name = m_ocaml_prefix_name;
   cu->ocaml.linker_dirs = m_ocaml_linker_dirs;
+  cu->ocaml.cmt_file_digest = m_ocaml_cmt_file_digest;
 
   /* Default any symbols without a specified symtab to the primary symtab.  */
   {

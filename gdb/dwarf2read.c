@@ -4455,6 +4455,7 @@ mapped_index_base::build_name_components ()
   auto *name_cmp
     = this->name_components_casing == case_sensitive_on ? strcmp : strcasecmp;
 
+  /* CR mshinwell: Does this need adapting to split on '.'? */
   /* The code below only knows how to break apart components of C++
      symbol names (and other languages that use '::' as
      namespace/module separator).  If we add support for wild matching
@@ -10811,9 +10812,7 @@ dwarf2_compute_name (const char *name,
      will set the demangled name to the result of dwarf2_full_name, and it is
      the demangled name that GDB uses if it exists.  */
   if (cu->language == language_ada
-      || (cu->language == language_fortran && physname)
-      /* We need access to the stamped (linkage) names in gdb. */
-      || cu->language == language_ocaml)
+      || (cu->language == language_fortran && physname))
     {
       /* For Ada unit, we prefer the linkage name over the name, as
 	 the former contains the exported name, which the user expects
@@ -10830,7 +10829,7 @@ dwarf2_compute_name (const char *name,
   if (name != NULL
       && (cu->language == language_cplus
 	  || cu->language == language_fortran || cu->language == language_d
-	  || cu->language == language_rust))
+	  || cu->language == language_rust || cu->language == language_ocaml))
     {
       if (die_needs_namespace (die, cu))
 	{
@@ -13827,7 +13826,8 @@ read_func_scope (struct die_info *die, struct dwarf2_cu *cu)
   if ((cu->language == language_cplus
        || cu->language == language_fortran
        || cu->language == language_d
-       || cu->language == language_rust)
+       || cu->language == language_rust
+       || cu->language == language_ocaml)
       && cu->processing_has_namespace_info)
     block_set_scope (block, determine_prefix (die, cu),
 		     &objfile->objfile_obstack);
@@ -15828,6 +15828,7 @@ read_structure_type (struct die_info *die, struct dwarf2_cu *cu)
     {
       if (cu->language == language_cplus
 	  || cu->language == language_d
+	  || cu->language == language_ocaml
 	  || cu->language == language_rust)
 	{
 	  const char *full_name = dwarf2_full_name (name, die, cu);
@@ -16941,6 +16942,15 @@ read_module_type (struct die_info *die, struct dwarf2_cu *cu)
   if (!module_name)
     complaint (_("DW_TAG_module has no name, offset %s"),
                sect_offset_str (die->sect_off));
+
+  if (cu->language == language_ocaml)
+    {
+      const char *previous_prefix = determine_prefix (die, cu);
+      if (previous_prefix[0] != '\0')
+	module_name = typename_concat (&objfile->objfile_obstack,
+				       previous_prefix, module_name, 0, cu);
+    }
+
   type = init_type (objfile, TYPE_CODE_MODULE, 0, module_name);
 
   return set_die_type (die, type, cu);
@@ -21285,6 +21295,7 @@ dwarf2_start_symtab (struct dwarf2_cu *cu,
   cu->builder->record_ocaml_config_digest (cu->ocaml.config_digest);
   cu->builder->record_ocaml_prefix_name (cu->ocaml.prefix_name);
   cu->builder->record_ocaml_linker_dirs (cu->ocaml.linker_dirs);
+  cu->builder->record_ocaml_cmt_file_digest (cu->ocaml.cmt_file_digest);
 
   cu->builder->record_debugformat ("DWARF 2");
   cu->builder->record_producer (cu->producer);
@@ -22346,7 +22357,7 @@ determine_prefix (struct die_info *die, struct dwarf2_cu *cu)
 
   if (cu->language != language_cplus
       && cu->language != language_fortran && cu->language != language_d
-      && cu->language != language_rust)
+      && cu->language != language_rust && cu->language != language_ocaml)
     return "";
 
   retval = anonymous_struct_prefix (die, cu);
@@ -22519,6 +22530,8 @@ typename_concat (struct obstack *obs, const char *prefix, const char *suffix,
       lead = "__";
       sep = "_MOD_";
     }
+  else if (cu->language == language_ocaml)
+    sep = ".";
   else
     sep = "::";
 
@@ -25229,6 +25242,9 @@ read_ocaml_specific_comp_unit_info (struct dwarf2_cu *cu,
 
   cu->ocaml.linker_dirs =
     dwarf2_string_attr (comp_unit_die, DW_AT_ocaml_linker_dirs, cu);
+
+  cu->ocaml.cmt_file_digest =
+    dwarf2_string_attr (comp_unit_die, DW_AT_ocaml_cmt_file_digest, cu);
 }
 
 /* Initialize basic fields of dwarf_cu CU according to DIE COMP_UNIT_DIE.  */

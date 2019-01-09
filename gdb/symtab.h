@@ -1383,6 +1383,10 @@ struct ocaml_compilation_unit_info
   /* A mangled form of the set of directories in which .cmx and .cmxa files
      were found by the OCaml compiler when linking the executable. */
   const char *linker_dirs;
+
+  /* The digest of the .cmt file for this compilation unit.  (This also
+     enables the recovery of the digest of the source file.)  */
+  const char *cmt_file_digest;
 };
 
 /* Compunit symtabs contain the actual "symbol table", aka blockvector, as well

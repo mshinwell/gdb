@@ -289,6 +289,11 @@ struct buildsym_compunit
     m_ocaml_linker_dirs = linker_dirs;
   }
 
+  void record_ocaml_cmt_file_digest (const char *cmt_file_digest)
+  {
+    m_ocaml_cmt_file_digest = cmt_file_digest;
+  }
+
   struct context_stack *push_context (int desc, CORE_ADDR valu);
 
   struct context_stack pop_context ();
@@ -377,6 +382,7 @@ private:
   const char *m_ocaml_config_digest;
   const char *m_ocaml_prefix_name;
   const char *m_ocaml_linker_dirs;
+  const char *m_ocaml_cmt_file_digest;
 
   /* Stack of subfile names.  */
   std::vector<const char *> m_subfile_stack;
