@@ -58,6 +58,8 @@ struct gdb_ocaml_support {
                      const struct value_print_options *options, int depth,
                      int max_string_length, int only_print_short_type,
                      int only_print_short_value);
+  void (*type_print) (struct type *, const char *, struct ui_file *, int, int,
+		      const struct type_print_options *flags);
   int (*parse) (const char* expr, int length);
   CORE_ADDR (*evaluate) (const char* expr, int length,
                          char** type_name_out);
@@ -121,6 +123,11 @@ initialise_debugger_support_library (const char *libmonda,
 	       struct ui_file *, int, struct value *,
 	       const struct value_print_options *, int, int, int, int))
     dlsym (handle, "monda_val_print");
+
+  stubs->type_print =
+    (void (*) (struct type *, const char *, struct ui_file *, int, int,
+	       const struct type_print_options *flags))
+    dlsym (handle, "monda_type_print");
 
   stubs->evaluate =
     (CORE_ADDR (*) (const char *, int, char **))
@@ -334,8 +341,29 @@ ocaml_val_print (struct type *type,
     }
 }
 
-/* CR mshinwell: should maybe remove some more chars.  ( and ) in particular might
-   appear---for infix operators---but who knows what removing them from here does. */
+static void
+ocaml_type_print (struct type *type,
+		  const char *varstring,
+		  struct ui_file *stream,
+		  int show, int level,
+		  const struct type_print_options *flags)
+{
+  struct gdb_ocaml_support *stubs = debugger_support_library ();
+
+  if (stubs && stubs->type_print)
+    {
+      stubs->type_print (type, varstring, stream, show, level, flags);
+    }
+  else
+    {
+      c_print_type (type, varstring, stream, show, level, flags);
+    }
+}
+
+/* CR mshinwell: should maybe remove some more chars. ( and ) in particular
+   might appear---for infix operators---but who knows what removing them from
+   here does. */
+
 static const char *word_break_characters =
   " \t\n!@#$%^&*()+=|~`}{[]\"';:?/><,-.";
 
@@ -504,7 +532,7 @@ extern const struct language_defn ocaml_language_defn =
   c_printchar,			/* Print a character constant */
   c_printstr,			/* Function to print string constant */
   c_emit_char,			/* Print a single char */
-  c_print_type,		        /* Print a type using appropriate syntax */
+  ocaml_type_print,		/* Print a type using appropriate syntax */
   c_print_typedef,		/* Print a typedef using appropriate syntax */
   ocaml_val_print,		/* Print a value using appropriate syntax */
   c_value_print,		/* Print a top-level value */
