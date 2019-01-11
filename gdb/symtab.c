@@ -4631,13 +4631,9 @@ print_symbol_info (enum search_domain kind,
 	puts_filtered ("\t");
     }
 
-  if (kind != TYPES_DOMAIN && block == STATIC_BLOCK)
-    {
-      if (SYMBOL_LANGUAGE (sym) == language_ocaml)
-	printf_filtered ("<statically allocated> ");
-      else
-	printf_filtered ("static ");
-    }
+  if (kind != TYPES_DOMAIN && block == STATIC_BLOCK
+      && SYMBOL_LANGUAGE (sym) != language_ocaml)
+      printf_filtered ("<statically allocated> ");
 
   /* Typedef that is not a C++ class.  */
   if (kind == TYPES_DOMAIN
