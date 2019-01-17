@@ -13973,7 +13973,25 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
 		 sect_offset_str (die->sect_off), objfile_name (objfile));
       return;
     }
+
   pc = attr_value_as_address (attr) + baseaddr;
+  /* CR mshinwell: Hack for macOS -- dsymutil isn't relocating DW_AT_low_pc
+     inside call sites.  (It looks like DW_AT_entry_pc for inlined_subroutine
+     isn't being dealt with correctly either.) */
+  /*
+  printf("original pc %p, baseaddr %p\n",
+	 (void*) (attr_value_as_address(attr)),
+         (void*) baseaddr);*/
+  if (pc < cu->base_address)
+    {
+      /*
+      printf("fixing base address %p by adding %p --> %p\n",
+	     (void*) pc, (void*) cu->base_address,
+	     (void*) (pc + cu->base_address));
+	     */
+      pc += cu->base_address;
+    }
+
   pc = gdbarch_adjust_dwarf2_addr (gdbarch, pc);
 
   if (cu->call_site_htab == NULL)
@@ -14156,7 +14174,7 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
       gdb_assert (call_site->parameter_count < nparams);
       parameter = &call_site->parameter[call_site->parameter_count];
 
-      parameter->type = die_type (child_die, cu);
+      parameter->type = read_type_die (child_die, cu);
 
       /* DW_AT_location specifies the register number or DW_AT_abstract_origin
 	 specifies DW_TAG_formal_parameter.  Value of the data assumed for the
@@ -14234,7 +14252,6 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
       parameter->value_size = DW_BLOCK (attr)->size;
 
       /* Parameters are not pre-cleared by memset above.  */
-      parameter->type = NULL;
       parameter->data_value = NULL;
       parameter->data_value_size = 0;
       call_site->parameter_count++;
