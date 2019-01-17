@@ -86,7 +86,7 @@ print_go_string (struct type *type,
 /* Implements the la_val_print routine for language Go.  */
 
 void
-go_val_print (struct type *type, int embedded_offset,
+go_val_print (struct type *type, struct frame_info *frame, int embedded_offset,
 	      CORE_ADDR address, struct ui_file *stream, int recurse,
 	      struct value *val,
 	      const struct value_print_options *options)
@@ -116,7 +116,7 @@ go_val_print (struct type *type, int embedded_offset,
 	/* Fall through.  */
 
       default:
-	c_val_print (type, embedded_offset, address, stream,
+	c_val_print (type, frame, embedded_offset, address, stream,
 		     recurse, val, options);
 	break;
     }

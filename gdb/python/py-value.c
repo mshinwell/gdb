@@ -946,7 +946,7 @@ valpy_str (PyObject *self)
 
   TRY
     {
-      common_val_print (((value_object *) self)->value, &stb, 0,
+      common_val_print (((value_object *) self)->value, NULL, &stb, 0,
 			&opts, python_language);
     }
   CATCH (except, RETURN_MASK_ALL)

@@ -15119,11 +15119,11 @@ else
 fi
 # CR mshinwell: Work out how to fix this properly
 # Linux:
-RDYNAMIC="-rdynamic -Wl,--export-dynamic"
-LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
+#RDYNAMIC="-rdynamic -Wl,--export-dynamic"
+#LDFLAGS="$LDFLAGS -Wl,--export-dynamic"
 # macOS:
-#RDYNAMIC="-rdynamic -Wl,-export_dynamic"
-#LDFLAGS="$LDFLAGS -Wl,-export_dynamic"
+RDYNAMIC="-rdynamic -Wl,-export_dynamic"
+LDFLAGS="$LDFLAGS -Wl,-export_dynamic"
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $found" >&5
 $as_echo "$found" >&6; }
 

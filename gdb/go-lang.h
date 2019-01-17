@@ -82,7 +82,7 @@ extern void go_print_type (struct type *type, const char *varstring,
 
 /* Defined in go-valprint.c.  */
 
-extern void go_val_print (struct type *type,
+extern void go_val_print (struct type *type, struct frame_info *,
 			  int embedded_offset, CORE_ADDR address,
 			  struct ui_file *stream, int recurse,
 			  struct value *val,

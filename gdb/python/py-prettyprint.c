@@ -350,7 +350,7 @@ print_string_repr (PyObject *printer, const char *hint,
       struct value_print_options opts = *options;
 
       opts.addressprint = 0;
-      common_val_print (replacement, stream, recurse, &opts, language);
+      common_val_print (replacement, NULL, stream, recurse, &opts, language);
     }
   else
     {
@@ -628,7 +628,8 @@ print_children (PyObject *printer, const char *hint,
 	      error (_("Error while executing Python code."));
 	    }
 	  else
-	    common_val_print (value, stream, recurse + 1, options, language);
+	    common_val_print (value, NULL, stream, recurse + 1, options,
+			      language);
 	}
 
       if (is_map && i % 2 == 0)

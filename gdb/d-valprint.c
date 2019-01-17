@@ -63,7 +63,7 @@ dynamic_array_type (struct type *type,
       ival = value_at (true_type, addr);
       true_type = value_type (ival);
 
-      d_val_print (true_type,
+      d_val_print (true_type, NULL,
 		   value_embedded_offset (ival), addr,
 		   stream, recurse + 1, ival, options);
       return 0;
@@ -73,7 +73,7 @@ dynamic_array_type (struct type *type,
 
 /* Implements the la_val_print routine for language D.  */
 void
-d_val_print (struct type *type, int embedded_offset,
+d_val_print (struct type *type, struct frame_info *frame, int embedded_offset,
              CORE_ADDR address, struct ui_file *stream, int recurse,
 	     struct value *val,
              const struct value_print_options *options)
@@ -90,7 +90,7 @@ d_val_print (struct type *type, int embedded_offset,
 	  break;
 	/* Fall through.  */
       default:
-	c_val_print (type, embedded_offset, address, stream,
+	c_val_print (type, NULL, embedded_offset, address, stream,
 		     recurse, val, options);
     }
 }

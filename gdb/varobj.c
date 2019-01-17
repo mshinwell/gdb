@@ -2389,7 +2389,7 @@ varobj_value_get_print_value (struct value *value,
     val_print_string (type, encoding.get (), str_addr, len, &stb, &opts);
   else
     /* All other cases.  */
-    common_val_print (value, &stb, 0, &opts, current_language);
+    common_val_print (value, NULL, &stb, 0, &opts, current_language);
 
   return std::move (stb.string ());
 }

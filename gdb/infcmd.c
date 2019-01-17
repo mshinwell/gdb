@@ -2325,7 +2325,7 @@ default_print_one_register_info (struct ui_file *file,
       get_user_print_options (&opts);
       opts.deref_ref = 1;
 
-      val_print (regtype,
+      val_print (regtype, NULL,
 		 value_embedded_offset (val), 0,
 		 &format_stream, 0, val, &opts, current_language);
 
@@ -2345,7 +2345,7 @@ default_print_one_register_info (struct ui_file *file,
       /* Print the register in hex.  */
       get_formatted_print_options (&opts, 'x');
       opts.deref_ref = 1;
-      val_print (regtype,
+      val_print (regtype, NULL,
 		 value_embedded_offset (val), 0,
 		 &format_stream, 0, val, &opts, current_language);
       /* If not a vector register, print it also according to its
@@ -2355,7 +2355,7 @@ default_print_one_register_info (struct ui_file *file,
 	  pad_to_column (format_stream, value_column_2);
 	  get_user_print_options (&opts);
 	  opts.deref_ref = 1;
-	  val_print (regtype,
+	  val_print (regtype, NULL,
 		     value_embedded_offset (val), 0,
 		     &format_stream, 0, val, &opts, current_language);
 	}

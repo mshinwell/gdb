@@ -221,7 +221,7 @@ struct language_defn
        OPTIONS are the formatting options to be used when
        printing.  */
 
-    void (*la_val_print) (struct type *type,
+    void (*la_val_print) (struct type *type, struct frame_info *frame,
 			  int embedded_offset, CORE_ADDR address,
 			  struct ui_file *stream, int recurse,
 			  struct value *val,

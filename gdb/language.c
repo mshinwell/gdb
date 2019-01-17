@@ -784,7 +784,7 @@ unk_lang_print_type (struct type *type, const char *varstring,
 }
 
 static void
-unk_lang_val_print (struct type *type,
+unk_lang_val_print (struct type *type, struct frame_info *frame,
 		    int embedded_offset, CORE_ADDR address,
 		    struct ui_file *stream, int recurse,
 		    struct value *val,

@@ -149,7 +149,7 @@ f77_print_array_1 (int nss, int ndimensions, struct type *type,
 	{
 	  struct value *elt = value_subscript ((struct value *)val, i);
 
-	  val_print (value_type (elt),
+	  val_print (value_type (elt), NULL,
 		     value_embedded_offset (elt),
 		     value_address (elt), stream, recurse,
 		     elt, options, current_language);
@@ -208,7 +208,7 @@ static const struct generic_val_print_decorations f_decorations =
    function; they are identical.  */
 
 void
-f_val_print (struct type *type, int embedded_offset,
+f_val_print (struct type *type, struct frame_info *frame, int embedded_offset,
 	     CORE_ADDR address, struct ui_file *stream, int recurse,
 	     struct value *original_value,
 	     const struct value_print_options *options)
@@ -338,7 +338,7 @@ f_val_print (struct type *type, int embedded_offset,
 		  fputs_filtered (" = ", stream);
 		}
 
-	      val_print (value_type (field),
+	      val_print (value_type (field), NULL,
 			 value_embedded_offset (field),
 			 value_address (field), stream, recurse + 1,
 			 field, options, current_language);

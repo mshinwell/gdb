@@ -226,7 +226,7 @@ print_frame_nameless_args (struct frame_info *frame, long start, int num,
    iff it should not be printed accoring to user settings.  */
 
 static void
-print_frame_arg (const struct frame_arg *arg)
+print_frame_arg (struct frame_info *frame, const struct frame_arg *arg)
 {
   struct ui_out *uiout = current_uiout;
   const char *error_message = NULL;
@@ -298,7 +298,7 @@ print_frame_arg (const struct frame_arg *arg)
 	      /* True in "summary" mode, false otherwise.  */
 	      opts.summary = !strcmp (print_frame_arguments, "scalars");
 
-	      common_val_print (arg->val, &stb, 2, &opts, language);
+	      common_val_print (arg->val, frame, &stb, 2, &opts, language);
 	    }
 	  CATCH (except, RETURN_MASK_ERROR)
 	    {
@@ -688,7 +688,7 @@ print_frame_args (struct symbol *func, struct frame_info *frame,
 	    read_frame_arg (sym, frame, &arg, &entryarg);
 
 	  if (arg.entry_kind != print_entry_values_only)
-	    print_frame_arg (&arg);
+	    print_frame_arg (frame, &arg);
 
 	  if (entryarg.entry_kind != print_entry_values_no)
 	    {
@@ -698,7 +698,7 @@ print_frame_args (struct symbol *func, struct frame_info *frame,
 		  uiout->wrap_hint ("    ");
 		}
 
-	      print_frame_arg (&entryarg);
+	      print_frame_arg (frame, &entryarg);
 	    }
 
 	  xfree (arg.error);

@@ -233,7 +233,7 @@ val_print_packed_array_elements (struct type *type, const gdb_byte *valaddr,
 	  struct value_print_options opts = *options;
 
 	  opts.deref_ref = 0;
-	  val_print (elttype,
+	  val_print (elttype, NULL,
 		     value_embedded_offset (v0), 0, stream,
 		     recurse + 1, v0, &opts, current_language);
 	  annotate_elt_rep (i - i0);
@@ -264,7 +264,7 @@ val_print_packed_array_elements (struct type *type, const gdb_byte *valaddr,
 		  maybe_print_array_index (index_type, j + low,
 					   stream, options);
 		}
-	      val_print (elttype,
+	      val_print (elttype, NULL,
 			 value_embedded_offset (v0), 0, stream,
 			 recurse + 1, v0, &opts, current_language);
 	      annotate_elt ();
@@ -689,7 +689,7 @@ print_field_values (struct type *type, const gdb_byte *valaddr,
 		     bit_size, TYPE_FIELD_TYPE (type, i));
 	      opts = *options;
 	      opts.deref_ref = 0;
-	      val_print (TYPE_FIELD_TYPE (type, i),
+	      val_print (TYPE_FIELD_TYPE (type, i), NULL,
 			 value_embedded_offset (v), 0,
 			 stream, recurse + 1, v,
 			 &opts, language);
@@ -700,7 +700,7 @@ print_field_values (struct type *type, const gdb_byte *valaddr,
 	  struct value_print_options opts = *options;
 
 	  opts.deref_ref = 0;
-	  val_print (TYPE_FIELD_TYPE (type, i),
+	  val_print (TYPE_FIELD_TYPE (type, i), NULL,
 		     (offset + TYPE_FIELD_BITPOS (type, i) / HOST_CHAR_BIT),
 		     0, stream, recurse + 1, val, &opts, language);
 	}
@@ -787,7 +787,7 @@ ada_val_print_gnat_array (struct type *type, const gdb_byte *valaddr,
       fprintf_filtered (stream, "0x0");
     }
   else
-    val_print (value_type (val),
+    val_print (value_type (val), NULL,
 	       value_embedded_offset (val), value_address (val),
 	       stream, recurse, val, options, language);
   value_free_to_mark (mark);
@@ -804,7 +804,7 @@ ada_val_print_ptr (struct type *type, const gdb_byte *valaddr,
 		   const struct value_print_options *options,
 		   const struct language_defn *language)
 {
-  val_print (type, offset, address, stream, recurse,
+  val_print (type, NULL, offset, address, stream, recurse,
 	     original_value, options, language_def (language_c));
 
   if (ada_is_tag_type (type))
@@ -858,12 +858,12 @@ ada_val_print_num (struct type *type, const gdb_byte *valaddr,
 	    = value_from_contents_and_address (type, valaddr + offset, 0);
 	  struct value *v = value_cast (target_type, v1);
 
-	  val_print (target_type,
+	  val_print (target_type, NULL,
 		     value_embedded_offset (v), 0, stream,
 		     recurse + 1, v, options, language);
 	}
       else
-	val_print (TYPE_TARGET_TYPE (type), offset,
+	val_print (TYPE_TARGET_TYPE (type), NULL, offset,
 		   address, stream, recurse, original_value,
 		   options, language);
       return;
@@ -973,7 +973,7 @@ ada_val_print_flt (struct type *type, const gdb_byte *valaddr,
 {
   if (options->format)
     {
-      val_print (type, offset, address, stream, recurse,
+      val_print (type, NULL, offset, address, stream, recurse,
 		 original_value, options, language_def (language_c));
       return;
     }
@@ -1077,7 +1077,7 @@ ada_val_print_ref (struct type *type, const gdb_byte *valaddr,
       if (ada_is_tagged_type (value_type (deref_val), 1))
 	deref_val = ada_tag_value_at_base_address (deref_val);
 
-      common_val_print (deref_val, stream, recurse + 1, options,
+      common_val_print (deref_val, NULL, stream, recurse + 1, options,
 			language);
       return;
     }
@@ -1104,7 +1104,7 @@ ada_val_print_ref (struct type *type, const gdb_byte *valaddr,
   if (value_lazy (deref_val))
     value_fetch_lazy (deref_val);
 
-  val_print (value_type (deref_val),
+  val_print (value_type (deref_val), NULL,
 	     value_embedded_offset (deref_val),
 	     value_address (deref_val), stream, recurse + 1,
 	     deref_val, options, language);
@@ -1144,7 +1144,7 @@ ada_val_print_1 (struct type *type,
   switch (TYPE_CODE (type))
     {
     default:
-      val_print (type, offset, address, stream, recurse,
+      val_print (type, NULL, offset, address, stream, recurse,
 		 original_value, options, language_def (language_c));
       break;
 
@@ -1198,7 +1198,7 @@ ada_val_print_1 (struct type *type,
    function; they are identical.  */
 
 void
-ada_val_print (struct type *type,
+ada_val_print (struct type *type, struct frame_info *frame,
 	       int embedded_offset, CORE_ADDR address,
 	       struct ui_file *stream, int recurse,
 	       struct value *val,
@@ -1263,7 +1263,7 @@ ada_value_print (struct value *val0, struct ui_file *stream,
 
   opts = *options;
   opts.deref_ref = 1;
-  val_print (type,
+  val_print (type, NULL,
 	     value_embedded_offset (val), address,
 	     stream, 0, val, &opts, current_language);
 }

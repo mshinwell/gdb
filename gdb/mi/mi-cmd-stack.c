@@ -478,7 +478,8 @@ mi_cmd_stack_list_variables (const char *command, char **argv, int argc)
    SKIP_UNAVAILABLE is true, only print ARG if it is available.  */
 
 static void
-list_arg_or_local (const struct frame_arg *arg, enum what_to_list what,
+list_arg_or_local (struct frame_info *frame,
+		   const struct frame_arg *arg, enum what_to_list what,
 		   enum print_values values, int skip_unavailable)
 {
   struct ui_out *uiout = current_uiout;
@@ -539,7 +540,7 @@ list_arg_or_local (const struct frame_arg *arg, enum what_to_list what,
 
 	      get_no_prettyformat_print_options (&opts);
 	      opts.deref_ref = 1;
-	      common_val_print (arg->val, &stb, 0, &opts,
+	      common_val_print (arg->val, frame, &stb, 0, &opts,
 				language_def (SYMBOL_LANGUAGE (arg->sym)));
 	    }
 	  CATCH (except, RETURN_MASK_ERROR)
@@ -664,9 +665,10 @@ list_args_or_locals (enum what_to_list what, enum print_values values,
 		}
 
 	      if (arg.entry_kind != print_entry_values_only)
-		list_arg_or_local (&arg, what, values, skip_unavailable);
+		list_arg_or_local (fi, &arg, what, values, skip_unavailable);
 	      if (entryarg.entry_kind != print_entry_values_no)
-		list_arg_or_local (&entryarg, what, values, skip_unavailable);
+		list_arg_or_local (fi, &entryarg, what, values,
+				   skip_unavailable);
 	      xfree (arg.error);
 	      xfree (entryarg.error);
 	    }

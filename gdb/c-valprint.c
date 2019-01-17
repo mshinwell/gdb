@@ -219,7 +219,7 @@ print_unpacked_pointer (struct type *type, struct type *elttype,
 	      wtype = unresolved_elttype;
 	    }
 	  vt_val = value_at (wtype, vt_address);
-	  common_val_print (vt_val, stream, recurse + 1, options,
+	  common_val_print (vt_val, NULL, stream, recurse + 1, options,
 			    current_language);
 	  if (options->prettyformat)
 	    {
@@ -497,7 +497,7 @@ c_val_print_memberptr (struct type *type, const gdb_byte *valaddr,
    function; they are identical.  */
 
 void
-c_val_print (struct type *type,
+c_val_print (struct type *type, struct frame_info *frame,
 	     int embedded_offset, CORE_ADDR address,
 	     struct ui_file *stream, int recurse,
 	     struct value *original_value,
@@ -676,7 +676,7 @@ c_value_print (struct value *val, struct ui_file *stream,
 			    full ? "" : _(" [incomplete object]"));
 	  /* Print out object: enclosing type is same as real_type if
 	     full.  */
-	  val_print (value_enclosing_type (val),
+	  val_print (value_enclosing_type (val), NULL,
 		     0,
 		     value_address (val), stream, 0,
 		     val, &opts, current_language);
@@ -689,7 +689,7 @@ c_value_print (struct value *val, struct ui_file *stream,
 	  /* No RTTI information, so let's do our best.  */
 	  fprintf_filtered (stream, "(%s ?) ",
 			    TYPE_NAME (value_enclosing_type (val)));
-	  val_print (value_enclosing_type (val),
+	  val_print (value_enclosing_type (val), NULL,
 		     0,
 		     value_address (val), stream, 0,
 		     val, &opts, current_language);
@@ -698,7 +698,7 @@ c_value_print (struct value *val, struct ui_file *stream,
       /* Otherwise, we end up at the return outside this "if".  */
     }
 
-  val_print (val_type,
+  val_print (val_type, NULL,
 	     value_embedded_offset (val),
 	     value_address (val),
 	     stream, 0,

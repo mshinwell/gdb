@@ -14144,6 +14144,7 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
     {
       struct call_site_parameter *parameter;
       struct attribute *loc, *origin;
+      struct die_info *type_die;
 
       if (child_die->tag != DW_TAG_call_site_parameter
           && child_die->tag != DW_TAG_GNU_call_site_parameter)
@@ -14154,6 +14155,8 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
 
       gdb_assert (call_site->parameter_count < nparams);
       parameter = &call_site->parameter[call_site->parameter_count];
+
+      parameter->type = die_type (child_die, cu);
 
       /* DW_AT_location specifies the register number or DW_AT_abstract_origin
 	 specifies DW_TAG_formal_parameter.  Value of the data assumed for the
@@ -14231,6 +14234,7 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
       parameter->value_size = DW_BLOCK (attr)->size;
 
       /* Parameters are not pre-cleared by memset above.  */
+      parameter->type = NULL;
       parameter->data_value = NULL;
       parameter->data_value_size = 0;
       call_site->parameter_count++;

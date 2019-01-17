@@ -1201,6 +1201,8 @@ struct call_site_parameter
 
   const gdb_byte *data_value;
   size_t data_value_size;
+
+  struct type *type;
 };
 
 /* * A place where a function gets called from, represented by

@@ -81,7 +81,7 @@ extern void c_print_typedef (struct type *,
 			     struct symbol *,
 			     struct ui_file *);
 
-extern void c_val_print (struct type *,
+extern void c_val_print (struct type *, struct frame_info *,
 			 int, CORE_ADDR,
 			 struct ui_file *, int,
 			 struct value *,

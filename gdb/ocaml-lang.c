@@ -51,7 +51,7 @@ static unsigned int value_printer_max_depth = 1;
 static unsigned int value_printer_max_string_length = 30;
 
 struct gdb_ocaml_support {
-  void (*val_print) (struct type *type,
+  void (*val_print) (struct type *type, struct frame_info *frame,
                      int embedded_offset, CORE_ADDR address,
                      struct ui_file *stream, int recurse,
                      struct value *val,
@@ -119,7 +119,7 @@ initialise_debugger_support_library (const char *libmonda,
     }
 
   stubs->val_print =
-    (void (*) (struct type *, int, CORE_ADDR,
+    (void (*) (struct type *, struct frame_info *, int, CORE_ADDR,
 	       struct ui_file *, int, struct value *,
 	       const struct value_print_options *, int, int, int, int))
     dlsym (handle, "monda_val_print");
@@ -317,7 +317,7 @@ ocaml_demangle (const char* mangled, int options)
 }
 
 static void
-ocaml_val_print (struct type *type,
+ocaml_val_print (struct type *type, struct frame_info *frame,
                  int embedded_offset, CORE_ADDR address,
                  struct ui_file *stream, int recurse,
                  struct value *val,
@@ -327,7 +327,7 @@ ocaml_val_print (struct type *type,
 
   if (stubs && stubs->val_print)
     {
-      stubs->val_print (type, embedded_offset, address, stream,
+      stubs->val_print (type, frame, embedded_offset, address, stream,
                         recurse, val, options,
                         value_printer_max_depth,
 			value_printer_max_string_length,
@@ -336,7 +336,7 @@ ocaml_val_print (struct type *type,
     }
   else
     {
-      c_val_print (type, embedded_offset, address, stream, recurse,
+      c_val_print (type, frame, embedded_offset, address, stream, recurse,
                    val, options);
     }
 }

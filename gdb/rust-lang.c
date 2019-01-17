@@ -411,7 +411,7 @@ val_print_struct (struct type *type, int embedded_offset,
 	  fputs_filtered (": ", stream);
         }
 
-      val_print (TYPE_FIELD_TYPE (type, i),
+      val_print (TYPE_FIELD_TYPE (type, i), NULL,
 		 embedded_offset + TYPE_FIELD_BITPOS (type, i) / 8,
 		 address,
 		 stream, recurse + 1, val, &opts,
@@ -486,7 +486,7 @@ rust_print_enum (struct type *type, int embedded_offset,
 	fprintf_filtered (stream, "%s: ",
 			  TYPE_FIELD_NAME (variant_type, j));
 
-      val_print (TYPE_FIELD_TYPE (variant_type, j),
+      val_print (TYPE_FIELD_TYPE (variant_type, j), NULL,
 		 (embedded_offset
 		  + TYPE_FIELD_BITPOS (variant_type, j) / 8),
 		 address,
@@ -517,7 +517,8 @@ static const struct generic_val_print_decorations rust_decorations =
 /* la_val_print implementation for Rust.  */
 
 static void
-rust_val_print (struct type *type, int embedded_offset,
+rust_val_print (struct type *type, struct frame_info *frame,
+                int embedded_offset,
 		CORE_ADDR address, struct ui_file *stream, int recurse,
 		struct value *val,
 		const struct value_print_options *options)
@@ -560,7 +561,7 @@ rust_val_print (struct type *type, int embedded_offset,
 
     case TYPE_CODE_METHODPTR:
     case TYPE_CODE_MEMBERPTR:
-      c_val_print (type, embedded_offset, address, stream,
+      c_val_print (type, frame, embedded_offset, address, stream,
 		   recurse, val, options);
       break;
 

@@ -578,7 +578,7 @@ generic_val_print_ref (struct type *type,
   if (options->deref_ref)
     {
       if (type_is_defined)
-	common_val_print (deref_val, stream, recurse, options,
+	common_val_print (deref_val, NULL, stream, recurse, options,
 			  current_language);
       else
 	fputs_filtered ("???", stream);
@@ -1010,7 +1010,8 @@ generic_val_print (struct type *type,
    RECURSE.  */
 
 void
-val_print (struct type *type, LONGEST embedded_offset,
+val_print (struct type *type, struct frame_info *frame,
+	   LONGEST embedded_offset,
 	   CORE_ADDR address, struct ui_file *stream, int recurse,
 	   struct value *val,
 	   const struct value_print_options *options,
@@ -1059,7 +1060,7 @@ val_print (struct type *type, LONGEST embedded_offset,
 
   TRY
     {
-      language->la_val_print (type, embedded_offset, address,
+      language->la_val_print (type, frame, embedded_offset, address,
 			      stream, recurse, val,
 			      &local_opts);
     }
@@ -1135,7 +1136,8 @@ value_check_printable (struct value *val, struct ui_file *stream,
    GDB's value mechanism.  */
 
 void
-common_val_print (struct value *val, struct ui_file *stream, int recurse,
+common_val_print (struct value *val, struct frame_info *frame,
+		  struct ui_file *stream, int recurse,
 		  const struct value_print_options *options,
 		  const struct language_defn *language)
 {
@@ -1153,7 +1155,7 @@ common_val_print (struct value *val, struct ui_file *stream, int recurse,
   if (value_lazy (val))
     value_fetch_lazy (val);
 
-  val_print (value_type (val),
+  val_print (value_type (val), frame,
 	     value_embedded_offset (val), value_address (val),
 	     stream, recurse,
 	     val, options, language);
@@ -1260,7 +1262,7 @@ val_print_scalar_formatted (struct type *type,
       struct value_print_options opts = *options;
       opts.format = 0;
       opts.deref_ref = 0;
-      val_print (type, embedded_offset, 0, stream, 0, val, &opts,
+      val_print (type, NULL, embedded_offset, 0, stream, 0, val, &opts,
 		 current_language);
       return;
     }
@@ -2035,7 +2037,7 @@ val_print_array_elements (struct type *type,
 
       if (reps > options->repeat_count_threshold)
 	{
-	  val_print (elttype, embedded_offset + i * eltlen,
+	  val_print (elttype, NULL, embedded_offset + i * eltlen,
 		     address, stream, recurse + 1, val, options,
 		     current_language);
 	  annotate_elt_rep (reps);
@@ -2047,7 +2049,7 @@ val_print_array_elements (struct type *type,
 	}
       else
 	{
-	  val_print (elttype, embedded_offset + i * eltlen,
+	  val_print (elttype, NULL, embedded_offset + i * eltlen,
 		     address,
 		     stream, recurse + 1, val, options, current_language);
 	  annotate_elt ();

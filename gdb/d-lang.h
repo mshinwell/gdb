@@ -78,7 +78,7 @@ extern struct block_symbol d_lookup_nested_symbol (struct type *, const char *,
 
 /* Defined in d-valprint.c  */
 
-extern void d_val_print (struct type *type,
+extern void d_val_print (struct type *type, struct frame_info *frame,
 			 int embedded_offset, CORE_ADDR address,
 			 struct ui_file *stream, int recurse,
 			 struct value *val,

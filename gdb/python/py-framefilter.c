@@ -250,7 +250,7 @@ py_print_value (struct ui_out *out, struct value *val,
     {
       string_file stb;
 
-      common_val_print (val, &stb, indent, opts, language);
+      common_val_print (val, NULL, &stb, indent, opts, language);
       out->field_stream ("value", stb);
     }
 }
