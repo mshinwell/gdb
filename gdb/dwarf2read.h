@@ -403,4 +403,7 @@ struct signatured_type
 typedef struct signatured_type *sig_type_ptr;
 DEF_VEC_P (sig_type_ptr);
 
+extern struct ocaml_compilation_unit_info* get_ocaml_compilation_unit_info
+  (struct dwarf2_cu*);
+
 #endif /* DWARF2READ_H */

@@ -567,6 +567,13 @@ struct dwarf2_cu
   struct partial_die_info *find_partial_die (sect_offset sect_off);
 };
 
+/* CR mshinwell: Work out where to put this */
+struct ocaml_compilation_unit_info* get_ocaml_compilation_unit_info
+    (struct dwarf2_cu* cu)
+{
+  return &cu->ocaml;
+}
+
 /* A struct that can be used as a hash key for tables based on DW_AT_stmt_list.
    This includes type_unit_group and quick_file_names.  */
 
