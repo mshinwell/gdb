@@ -10819,7 +10819,8 @@ dwarf2_compute_name (const char *name,
      will set the demangled name to the result of dwarf2_full_name, and it is
      the demangled name that GDB uses if it exists.  */
   if (cu->language == language_ada
-      || (cu->language == language_fortran && physname))
+      || (cu->language == language_fortran && physname)
+      || (cu->language == language_ocaml && physname))
     {
       /* For Ada unit, we prefer the linkage name over the name, as
 	 the former contains the exported name, which the user expects
@@ -14044,6 +14045,8 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
   memset (call_site, 0, sizeof (*call_site) - sizeof (*call_site->parameter));
   call_site->pc = pc;
 
+  printf("recording pc at call site: %p, call_site struct %p\n", (void*) pc, (void*) call_site);
+
   if (dwarf2_flag_true_p (die, DW_AT_call_tail_call, cu)
       || dwarf2_flag_true_p (die, DW_AT_GNU_tail_call, cu))
     {
@@ -14105,7 +14108,9 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
     }
   SET_FIELD_DWARF_BLOCK (call_site->target, NULL);
   if (!attr || (attr_form_is_block (attr) && DW_BLOCK (attr)->size == 0))
-    /* Keep NULL DWARF_BLOCK.  */;
+    {
+      /* Keep NULL DWARF_BLOCK.  */
+    }
   else if (attr_form_is_block (attr))
     {
       struct dwarf2_locexpr_baton *dlbaton;
@@ -14143,17 +14148,30 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
 	{
 	  CORE_ADDR lowpc;
 
-	  /* DW_AT_entry_pc should be preferred.  */
-	  if (dwarf2_get_pc_bounds (target_die, &lowpc, NULL, target_cu, NULL)
-	      <= PC_BOUNDS_INVALID)
-	    complaint (_("DW_AT_call_target target DIE has invalid "
-		         "low pc, for referencing DIE %s [in module %s]"),
-		       sect_offset_str (die->sect_off), objfile_name (objfile));
+	  printf("ref, non-decl case\n");
+	  struct attribute *entry_pc =
+	    dwarf2_attr (target_die, DW_AT_entry_pc, target_cu);
+
+	  if (entry_pc != NULL)
+	    lowpc = attr_value_as_address (entry_pc);
 	  else
 	    {
-	      lowpc = gdbarch_adjust_dwarf2_addr (gdbarch, lowpc + baseaddr);
-	      SET_FIELD_PHYSADDR (call_site->target, lowpc);
+	      if (dwarf2_get_pc_bounds (target_die, &lowpc, NULL,
+					target_cu, NULL)
+		  <= PC_BOUNDS_INVALID) {
+		printf ("DW_AT_call_target target DIE %s has invalid low pc, for referencing DIE %s [in module %s]",
+			sect_offset_str (target_die->sect_off),
+			  sect_offset_str (die->sect_off), objfile_name (objfile));
+		complaint (_("DW_AT_call_target target DIE %s has invalid "
+			    "low pc, for referencing DIE %s [in module %s]"),
+			  sect_offset_str (target_die->sect_off),
+			  sect_offset_str (die->sect_off),
+			   objfile_name (objfile));
+	      }
 	    }
+	    lowpc = gdbarch_adjust_dwarf2_addr (gdbarch, lowpc + baseaddr);
+	    printf("setting field PHYSADDR to %p\n", (void*) lowpc);
+	    SET_FIELD_PHYSADDR (call_site->target, lowpc);
 	}
     }
   else
@@ -14715,9 +14733,11 @@ dwarf2_get_pc_bounds (struct die_info *die, CORE_ADDR *lowpc,
 	  if (cu->header.version >= 4 && attr_form_is_constant (attr_high))
 	    high += low;
 	}
-      else
+      else {
+	printf("case 4");
 	/* Found high w/o low attribute.  */
 	return PC_BOUNDS_INVALID;
+	}
 
       /* Found consecutive range of addresses.  */
       ret = PC_BOUNDS_HIGH_LOW;
@@ -14743,13 +14763,17 @@ dwarf2_get_pc_bounds (struct die_info *die, CORE_ADDR *lowpc,
 	  /* Found discontinuous range of addresses.  */
 	  ret = PC_BOUNDS_RANGES;
 	}
-      else
+      else {
+	printf("case 3");
 	return PC_BOUNDS_NOT_PRESENT;
+	}
     }
 
   /* partial_die_info::read has also the strict LOW < HIGH requirement.  */
-  if (high <= low)
+  if (high <= low) {
+    printf("case 2");
     return PC_BOUNDS_INVALID;
+      }
 
   /* When using the GNU linker, .gnu.linkonce. sections are used to
      eliminate duplicate copies of functions and vtables and such.
@@ -14760,7 +14784,10 @@ dwarf2_get_pc_bounds (struct die_info *die, CORE_ADDR *lowpc,
      If this is a discarded function, mark the pc bounds as invalid,
      so that GDB will ignore it.  */
   if (low == 0 && !dwarf2_per_objfile->has_section_at_zero)
+    {
+      printf("case 1");
     return PC_BOUNDS_INVALID;
+    }
 
   *lowpc = low;
   if (highpc)

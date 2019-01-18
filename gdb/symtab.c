@@ -758,16 +758,6 @@ symbol_find_demangled_name (struct general_symbol_info *gsymbol,
 	  return demangled;
 	}
     }
-  if (gsymbol->language == language_ocaml
-      || gsymbol->language == language_auto)
-    {
-      demangled = ocaml_demangle (mangled, 0);
-      if (demangled != NULL)
-	{
-	  gsymbol->language = language_ocaml;
-	  return demangled;
-	}
-    }
 
   return NULL;
 }
