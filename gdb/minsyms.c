@@ -258,6 +258,10 @@ lookup_minimal_symbol_mangled (const char *lookup_name,
        msymbol = msymbol->hash_next)
     {
       const char *symbol_name = MSYMBOL_LINKAGE_NAME (msymbol);
+/*
+      printf("lookup mangled: symbol_name %s, lookup_name %s\n",
+	     symbol_name, lookup_name);
+	     */
 
       if (namecmp (symbol_name, lookup_name) == 0
 	  && found.maybe_collect (sfile, objfile, msymbol))
@@ -282,6 +286,11 @@ lookup_minimal_symbol_demangled (const lookup_name_info &lookup_name,
        msymbol = msymbol->demangled_hash_next)
     {
       const char *symbol_name = MSYMBOL_SEARCH_NAME (msymbol);
+
+      /*
+      printf("lookup demangled: symbol_name %s, lookup_name %s\n",
+	     symbol_name, lookup_name.name().c_str());
+	     */
 
       if (matcher (symbol_name, lookup_name, NULL)
 	  && found.maybe_collect (sfile, objfile, msymbol))
