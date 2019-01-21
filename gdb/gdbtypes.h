@@ -1234,6 +1234,9 @@ struct call_site
 
     struct dwarf2_per_cu_data *per_cu;
 
+    int line;
+    int column;
+
     /* * Describe DW_TAG_call_site's DW_TAG_formal_parameter.  */
 
     struct call_site_parameter parameter[1];

@@ -14045,6 +14045,18 @@ read_call_site_scope (struct die_info *die, struct dwarf2_cu *cu)
   memset (call_site, 0, sizeof (*call_site) - sizeof (*call_site->parameter));
   call_site->pc = pc;
 
+  attr = dwarf2_attr (die, DW_AT_call_line, cu);
+  if (attr != NULL)
+    call_site->line = DW_UNSND (attr);
+  else
+    call_site->line = -1;
+
+  attr = dwarf2_attr (die, DW_AT_call_column, cu);
+  if (attr != NULL)
+    call_site->column = DW_UNSND (attr);
+  else
+    call_site->column = -1;
+
   /*
   printf("recording pc at call site: %p, call_site struct %p\n", (void*) pc, (void*) call_site);
 */
