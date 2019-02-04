@@ -10721,6 +10721,11 @@ die_needs_namespace (struct die_info *die, struct dwarf2_cu *cu)
     case DW_TAG_imported_declaration:
       return 1;
 
+    case DW_TAG_module:
+      if (cu->language == language_ocaml)
+	return 1;
+      return 0;
+
     case DW_TAG_variable:
     case DW_TAG_constant:
       /* We only need to prefix "globally" visible variables.  These include
@@ -21627,6 +21632,12 @@ new_symbol (struct die_info *die, struct type *type, struct dwarf2_cu *cu,
 		      && startswith (cu->producer, "GNU Fortran"))
 		    SYMBOL_ACLASS_INDEX (sym) = LOC_UNRESOLVED;
 
+		  /*
+		  if (cu->list_in_scope == cu->builder->get_file_symbols ()) {
+		    printf("Adding global symbol %s\n", name);
+		  }
+		  */
+
 		  /* A variable with DW_AT_external is never static,
 		     but it may be block-scoped.  */
 		  list_to_add
@@ -21813,8 +21824,17 @@ new_symbol (struct die_info *die, struct type *type, struct dwarf2_cu *cu,
 	  list_to_add = NULL;
 	}
 
-      if (list_to_add != NULL)
+      if (list_to_add != NULL) {
+	/*
+	printf("Creating symbol %s with linkage name %s, domain %s, global %d\n", name,
+	       linkagename,
+	       SYMBOL_DOMAIN(sym) == VAR_DOMAIN ? "VAR"
+	       : SYMBOL_DOMAIN(sym) == MODULE_DOMAIN ? "MODULE"
+	       : "OTHER",
+	       list_to_add == cu->builder->get_global_symbols ());
+	       */
 	dw2_add_symbol_to_list (sym, list_to_add);
+      }
 
       /* For the benefit of old versions of GCC, check for anonymous
 	 namespaces based on the demangled name.  */

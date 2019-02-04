@@ -1,5 +1,5 @@
 /* OCaml language support for GDB, the GNU debugger.
-   Copyright (C) 2013--2018, Jane Street Group LLC
+   Copyright (C) 2013--2019, Jane Street Group LLC
 
    Contributed by Mark Shinwell <mshinwell@janestreet.com>
 
@@ -65,6 +65,11 @@ struct gdb_ocaml_support {
                          char** type_name_out);
   char* (*demangle) (const char *name,
                      int options);
+  struct block_symbol (*lookup_symbol_nonlocal)
+    (const struct language_defn *,
+     const char *,
+     const struct block *,
+     const domain_enum);
   void (*set_value_printer_max_depth) (int max_depth);
   void (*set_value_printer_max_string_length) (int max_string_length);
 };
@@ -148,6 +153,14 @@ initialise_debugger_support_library (const char *libmonda,
   stubs->parse =
     (int (*) (const char *, int))
     dlsym (handle, "monda_parse");
+
+  stubs->lookup_symbol_nonlocal =
+    (struct block_symbol (*)
+      (const struct language_defn *,
+       const char *,
+       const struct block *,
+       const domain_enum))
+    dlsym (handle, "monda_lookup_symbol_nonlocal");
 
   return handle;
 }
@@ -469,6 +482,20 @@ evaluate_subexp_ocaml (struct type *expect_type, struct expression *exp,
   return NULL;
 }
 
+static struct block_symbol
+monda_lookup_symbol_nonlocal (const struct language_defn *langdef,
+			      const char *name,
+			      const struct block *block,
+			      const domain_enum domain)
+{
+  struct gdb_ocaml_support *stubs = debugger_support_library ();
+
+  if (stubs && stubs->lookup_symbol_nonlocal)
+    return stubs->lookup_symbol_nonlocal (langdef, name, block, domain);
+
+  return basic_lookup_symbol_nonlocal (langdef, name, block, domain);
+}
+
 enum ocaml_primitive_types {
   ocaml_primitive_type_value,
   nr_ocaml_primitive_types
@@ -540,7 +567,7 @@ extern const struct language_defn ocaml_language_defn =
   NULL,				/* Language specific skip_trampoline */
   NULL,				/* name_of_this */
   true,				/* la_store_sym_names_in_linkage_form_p */
-  basic_lookup_symbol_nonlocal,	/* lookup_symbol_nonlocal */
+  monda_lookup_symbol_nonlocal,	/* lookup_symbol_nonlocal */
   basic_lookup_transparent_type,/* lookup_transparent_type */
   ocaml_demangle,               /* Language specific symbol demangler */
   NULL,
